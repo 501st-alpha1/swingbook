@@ -82,9 +82,11 @@ class _AttendeePicker extends StatelessWidget {
               itemBuilder: (context, i) {
                 final student = sorted[i];
                 final isSelected = selected.contains(student.id);
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                final highlightColor = isDark ? AppTheme.goldDark : AppTheme.gold;
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  color: isSelected ? AppTheme.gold.withValues(alpha: 0.15) : null,
+                  color: isSelected ? highlightColor.withValues(alpha: isDark ? 0.2 : 0.15) : null,
                   child: CheckboxListTile(
                     title: Text(student.name),
                     value: isSelected,
@@ -314,12 +316,19 @@ class _Cell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final level = progress.level;
+    final brightness = Theme.of(context).brightness;
+    final cellColor = AppTheme.levelColor(level.index, brightness);
+    final isDark = brightness == Brightness.dark;
+    final textColor = level.index >= 3
+        ? (isDark ? AppTheme.surfaceDark : Colors.white)
+        : (isDark ? AppTheme.onSurfaceDark : AppTheme.charcoal);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.levelColor(level.index),
+          color: cellColor,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
@@ -331,7 +340,7 @@ class _Cell extends StatelessWidget {
               level.shortLabel,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: level.index >= 3 ? Colors.white : AppTheme.charcoal,
+                color: textColor,
               ),
             ),
             if (progress.exposures > 0)
@@ -339,7 +348,9 @@ class _Cell extends StatelessWidget {
                 '${progress.exposures}×',
                 style: TextStyle(
                   fontSize: 10,
-                  color: level.index >= 3 ? Colors.white70 : Colors.grey.shade600,
+                  color: level.index >= 3
+                      ? textColor.withValues(alpha: 0.75)
+                      : (isDark ? AppTheme.onSurfaceDark.withValues(alpha: 0.6) : Colors.grey.shade600),
                 ),
               ),
           ],
@@ -374,7 +385,7 @@ void _showLevelPicker(
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: AppTheme.levelColor(level.index),
+                    color: AppTheme.levelColor(level.index, Theme.of(ctx).brightness),
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),

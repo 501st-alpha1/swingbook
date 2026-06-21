@@ -70,9 +70,16 @@ class _BpmSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final bannerColor = isDark
+        ? AppTheme.tealDark.withValues(alpha: 0.15)
+        : AppTheme.teal.withValues(alpha: 0.06);
+    final iconColor = isDark ? AppTheme.tealDark : AppTheme.teal;
+
     return Container(
       width: double.infinity,
-      color: AppTheme.teal.withValues(alpha: 0.06),
+      color: bannerColor,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Wrap(
         spacing: 24,
@@ -84,7 +91,7 @@ class _BpmSection extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.speed, size: 18, color: AppTheme.teal),
+                Icon(Icons.speed, size: 18, color: iconColor),
                 const SizedBox(width: 6),
                 Text(
                   '${role == Role.lead ? "Lead" : "Follow"} max BPM: ',
@@ -94,7 +101,7 @@ class _BpmSection extends StatelessWidget {
                   bpm != null ? '$bpm' : 'Not set',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.teal,
+                        color: iconColor,
                       ),
                 ),
                 const SizedBox(width: 4),
@@ -256,9 +263,20 @@ class _LevelSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final unselectedBg = isDark ? const Color(0xFF2A3032) : Colors.grey.shade100;
+    final unselectedBorder = isDark ? const Color(0xFF3A4144) : Colors.grey.shade300;
+    final unselectedText = isDark ? Colors.grey.shade500 : Colors.grey.shade500;
+
     return Row(
       children: ProficiencyLevel.values.map((l) {
         final isSelected = l == level;
+        final selectedColor = AppTheme.levelColor(l.index, brightness);
+        final selectedText = l.index >= 3
+            ? (isDark ? AppTheme.surfaceDark : Colors.white)
+            : (isDark ? AppTheme.onSurfaceDark : AppTheme.charcoal);
+
         return Expanded(
           child: GestureDetector(
             onTap: () => onChanged(l),
@@ -266,9 +284,9 @@ class _LevelSelector extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               height: 28,
               decoration: BoxDecoration(
-                color: isSelected ? AppTheme.levelColor(l.index) : Colors.grey.shade100,
+                color: isSelected ? selectedColor : unselectedBg,
                 borderRadius: BorderRadius.circular(6),
-                border: isSelected ? null : Border.all(color: Colors.grey.shade300),
+                border: isSelected ? null : Border.all(color: unselectedBorder),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -276,9 +294,7 @@ class _LevelSelector extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected
-                      ? (l.index >= 3 ? Colors.white : AppTheme.charcoal)
-                      : Colors.grey.shade500,
+                  color: isSelected ? selectedText : unselectedText,
                 ),
               ),
             ),

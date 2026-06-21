@@ -20,7 +20,9 @@ class SwingbookApp extends StatelessWidget {
       create: (_) => AppState()..load(),
       child: MaterialApp(
         title: 'Swingbook',
-        theme: AppTheme.theme,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
         home: const RootShell(),
         debugShowCheckedModeBanner: false,
       ),

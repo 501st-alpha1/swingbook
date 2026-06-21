@@ -66,12 +66,15 @@ class _StudentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final roleLabel = student.roles.map((r) => r == Role.lead ? 'Lead' : 'Follow').join(' / ');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final avatarColor = isDark ? AppTheme.tealDark : AppTheme.teal;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: AppTheme.teal.withValues(alpha: 0.15),
-          foregroundColor: AppTheme.teal,
+          backgroundColor: avatarColor.withValues(alpha: isDark ? 0.25 : 0.15),
+          foregroundColor: avatarColor,
           child: Text(student.name.isNotEmpty ? student.name[0].toUpperCase() : '?'),
         ),
         title: Text(student.name),
