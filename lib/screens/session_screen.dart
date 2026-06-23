@@ -14,7 +14,8 @@ class SessionScreen extends StatefulWidget {
 }
 
 class _SessionScreenState extends State<SessionScreen> {
-  final Set<String> _attendeeIds = {};
+  // studentId -> the role they're playing for this session
+  final Map<String, Role> _sessionRoles = {};
   bool _pickingAttendees = true;
 
   @override
@@ -24,23 +25,20 @@ class _SessionScreenState extends State<SessionScreen> {
     if (_pickingAttendees) {
       return _AttendeePicker(
         students: appState.students,
-        selected: _attendeeIds,
-        onToggle: (id) => setState(() {
-          if (_attendeeIds.contains(id)) {
-            _attendeeIds.remove(id);
+        sessionRoles: _sessionRoles,
+        onSetRole: (id, role) => setState(() {
+          if (role == null) {
+            _sessionRoles.remove(id);
           } else {
-            _attendeeIds.add(id);
+            _sessionRoles[id] = role;
           }
         }),
-        onStart: _attendeeIds.isEmpty ? null : () => setState(() => _pickingAttendees = false),
+        onStart: _sessionRoles.isEmpty ? null : () => setState(() => _pickingAttendees = false),
       );
     }
 
-    final attendees = appState.students.where((s) => _attendeeIds.contains(s.id)).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-
     return _SessionGrid(
-      attendees: attendees,
+      sessionRoles: _sessionRoles,
       onEditAttendees: () => setState(() => _pickingAttendees = true),
     );
   }
@@ -49,14 +47,14 @@ class _SessionScreenState extends State<SessionScreen> {
 class _AttendeePicker extends StatelessWidget {
   const _AttendeePicker({
     required this.students,
-    required this.selected,
-    required this.onToggle,
+    required this.sessionRoles,
+    required this.onSetRole,
     required this.onStart,
   });
 
   final List<Student> students;
-  final Set<String> selected;
-  final ValueChanged<String> onToggle;
+  final Map<String, Role> sessionRoles;
+  final void Function(String studentId, Role? role) onSetRole;
   final VoidCallback? onStart;
 
   @override
@@ -81,17 +79,19 @@ class _AttendeePicker extends StatelessWidget {
               itemCount: sorted.length,
               itemBuilder: (context, i) {
                 final student = sorted[i];
-                final isSelected = selected.contains(student.id);
+                final assignedRole = sessionRoles[student.id];
                 final isDark = Theme.of(context).brightness == Brightness.dark;
                 final highlightColor = isDark ? AppTheme.goldDark : AppTheme.gold;
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  color: isSelected ? highlightColor.withValues(alpha: isDark ? 0.2 : 0.15) : null,
-                  child: CheckboxListTile(
+                  color: assignedRole != null ? highlightColor.withValues(alpha: isDark ? 0.2 : 0.15) : null,
+                  child: ListTile(
                     title: Text(student.name),
-                    value: isSelected,
-                    onChanged: (_) => onToggle(student.id),
-                    controlAffinity: ListTileControlAffinity.leading,
+                    trailing: _RoleToggle(
+                      student: student,
+                      assignedRole: assignedRole,
+                      onSetRole: (role) => onSetRole(student.id, role),
+                    ),
                   ),
                 );
               },
@@ -103,7 +103,7 @@ class _AttendeePicker extends StatelessWidget {
             onPressed: onStart,
             icon: const Icon(Icons.play_arrow),
             label: Text(
-              selected.isEmpty ? 'Select attendees to start' : 'Start session (${selected.length})',
+              sessionRoles.isEmpty ? 'Assign roles to start' : 'Start session (${sessionRoles.length})',
             ),
           ),
         ),
@@ -112,93 +112,119 @@ class _AttendeePicker extends StatelessWidget {
   }
 }
 
-class _SessionGrid extends StatefulWidget {
-  const _SessionGrid({required this.attendees, required this.onEditAttendees});
+/// Lets you pick the session role for a student. If the student only has
+/// one role on their profile, only that option is offered.
+class _RoleToggle extends StatelessWidget {
+  const _RoleToggle({
+    required this.student,
+    required this.assignedRole,
+    required this.onSetRole,
+  });
 
-  final List<Student> attendees;
-  final VoidCallback onEditAttendees;
+  final Student student;
+  final Role? assignedRole;
+  final ValueChanged<Role?> onSetRole;
 
   @override
-  State<_SessionGrid> createState() => _SessionGridState();
+  Widget build(BuildContext context) {
+    final availableRoles = student.roles.toList()..sort((a, b) => a.name.compareTo(b.name));
+
+    if (availableRoles.isEmpty) {
+      return Text(
+        'No roles set',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      children: availableRoles.map((role) {
+        final isSelected = assignedRole == role;
+        return ChoiceChip(
+          label: Text(role == Role.lead ? 'Lead' : 'Follow'),
+          selected: isSelected,
+          onSelected: (sel) => onSetRole(sel ? role : null),
+        );
+      }).toList(),
+    );
+  }
 }
 
-class _SessionGridState extends State<_SessionGrid> {
-  Role _roleView = Role.follow;
+class _SessionGrid extends StatelessWidget {
+  const _SessionGrid({required this.sessionRoles, required this.onEditAttendees});
+
+  final Map<String, Role> sessionRoles;
+  final VoidCallback onEditAttendees;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final moves = [...appState.catalog]..sort((a, b) => a.name.compareTo(b.name));
 
-    // Refresh attendee data from latest app state (in case of edits elsewhere).
-    final attendeeIds = widget.attendees.map((s) => s.id).toSet();
-    final attendees = appState.students.where((s) => attendeeIds.contains(s.id)).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-
-    final visibleAttendees = attendees.where((s) => s.roles.contains(_roleView)).toList();
+    // Pull latest student records (in case of edits elsewhere) and pair each
+    // with their assigned session role.
+    final byId = {for (final s in appState.students) s.id: s};
+    final leads = <Student>[];
+    final follows = <Student>[];
+    for (final entry in sessionRoles.entries) {
+      final student = byId[entry.key];
+      if (student == null) continue;
+      if (entry.value == Role.lead) {
+        leads.add(student);
+      } else {
+        follows.add(student);
+      }
+    }
+    leads.sort((a, b) => a.name.compareTo(b.name));
+    follows.sort((a, b) => a.name.compareTo(b.name));
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Session · ${attendees.length} here'),
+        title: Text('Session · ${sessionRoles.length} here'),
         actions: [
           IconButton(
             icon: const Icon(Icons.group_outlined),
             tooltip: 'Edit attendees',
-            onPressed: widget.onEditAttendees,
+            onPressed: onEditAttendees,
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
+      body: moves.isEmpty
+          ? const Center(child: Text('No moves in catalog yet.'))
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 88),
               children: [
-                const Text('Viewing role: '),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Lead'),
-                  selected: _roleView == Role.lead,
-                  onSelected: (_) => setState(() => _roleView = Role.lead),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Follow'),
-                  selected: _roleView == Role.follow,
-                  onSelected: (_) => setState(() => _roleView = Role.follow),
-                ),
+                if (leads.isNotEmpty) ...[
+                  _SectionHeader(label: 'Leads'),
+                  _Grid(moves: moves, attendees: leads, role: Role.lead),
+                ],
+                if (follows.isNotEmpty) ...[
+                  _SectionHeader(label: 'Follows'),
+                  _Grid(moves: moves, attendees: follows, role: Role.follow),
+                ],
               ],
             ),
-          ),
-          const Divider(height: 1),
-          if (moves.isEmpty)
-            const Expanded(child: Center(child: Text('No moves in catalog yet.')))
-          else if (visibleAttendees.isEmpty)
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'None of tonight\'s attendees dance ${_roleView == Role.lead ? "Lead" : "Follow"}.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: _Grid(
-                moves: moves,
-                attendees: visibleAttendees,
-                role: _roleView,
-              ),
-            ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showQuickAddMove(context),
         icon: const Icon(Icons.add),
         label: const Text('Quick add move'),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 4),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
