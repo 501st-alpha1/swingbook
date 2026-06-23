@@ -237,7 +237,7 @@ class _Grid extends StatelessWidget {
   final List<Student> attendees;
   final Role role;
 
-  static const double _nameColWidth = 140;
+  static const double _nameColWidth = 160;
   static const double _cellWidth = 64;
   static const double _rowHeight = 56;
 
@@ -245,89 +245,100 @@ class _Grid extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row: attendee names
-            Row(
-              children: [
-                const SizedBox(width: _nameColWidth, height: _rowHeight),
-                ...attendees.map((s) => SizedBox(
-                      width: _cellWidth,
-                      height: _rowHeight,
-                      child: Center(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row: attendee names
+          Row(
+            children: [
+              const SizedBox(width: _nameColWidth, height: _rowHeight),
+              ...attendees.map((s) => SizedBox(
+                    width: _cellWidth,
+                    height: _rowHeight,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          s.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  )),
+            ],
+          ),
+          const Divider(height: 1),
+          // Move rows
+          ...moves.map((move) => Column(
+                children: [
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: _nameColWidth,
+                        height: _rowHeight,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            s.name,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  move.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, size: 18),
+                                tooltip: 'Undo exposure for everyone shown',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                onPressed: () => context.read<AppState>().adjustExposures(
+                                      move.id,
+                                      role,
+                                      attendees.map((s) => s.id).toList(),
+                                      -1,
+                                    ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline, size: 18),
+                                tooltip: 'Log exposure for everyone shown',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                onPressed: () => context.read<AppState>().adjustExposures(
+                                      move.id,
+                                      role,
+                                      attendees.map((s) => s.id).toList(),
+                                      1,
+                                    ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    )),
-              ],
-            ),
-            const Divider(height: 1),
-            // Move rows
-            ...moves.map((move) => Column(
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: _nameColWidth,
+                      ...attendees.map((student) {
+                        final progress = student.progressFor(move.id, role);
+                        return SizedBox(
+                          width: _cellWidth,
                           height: _rowHeight,
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    move.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context).textTheme.bodySmall,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline, size: 18),
-                                  tooltip: 'Log exposure for everyone shown',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                  onPressed: () => context.read<AppState>().incrementExposures(
-                                        move.id,
-                                        role,
-                                        attendees.map((s) => s.id).toList(),
-                                      ),
-                                ),
-                              ],
+                            padding: const EdgeInsets.all(4),
+                            child: _Cell(
+                              progress: progress,
+                              onTap: () => _showLevelPicker(context, student, move, role, progress.level),
                             ),
                           ),
-                        ),
-                        ...attendees.map((student) {
-                          final progress = student.progressFor(move.id, role);
-                          return SizedBox(
-                            width: _cellWidth,
-                            height: _rowHeight,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: _Cell(
-                                progress: progress,
-                                onTap: () => _showLevelPicker(context, student, move, role, progress.level),
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                    const Divider(height: 1),
-                  ],
-                )),
-          ],
-        ),
+                        );
+                      }),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                ],
+              )),
+        ],
       ),
     );
   }

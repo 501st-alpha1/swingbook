@@ -239,10 +239,12 @@ class _MoveRow extends StatelessWidget {
                             .setLevel(student.id, move.id, role, level),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${progress.exposures}×',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500),
+                    const SizedBox(width: 4),
+                    _ExposureStepper(
+                      exposures: progress.exposures,
+                      onAdjust: (delta) => context
+                          .read<AppState>()
+                          .adjustExposureForStudent(student.id, move.id, role, delta),
                     ),
                   ],
                 ),
@@ -251,6 +253,60 @@ class _MoveRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Compact -/count/+ control for adjusting exposure count by 1.
+class _ExposureStepper extends StatelessWidget {
+  const _ExposureStepper({required this.exposures, required this.onAdjust});
+
+  final int exposures;
+  final ValueChanged<int> onAdjust;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _StepperButton(
+          icon: Icons.remove,
+          tooltip: 'Decrease exposures',
+          onPressed: exposures > 0 ? () => onAdjust(-1) : null,
+        ),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '${exposures}×',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+          ),
+        ),
+        _StepperButton(
+          icon: Icons.add,
+          tooltip: 'Increase exposures',
+          onPressed: () => onAdjust(1),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  const _StepperButton({required this.icon, required this.tooltip, required this.onPressed});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 14),
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      onPressed: onPressed,
     );
   }
 }
