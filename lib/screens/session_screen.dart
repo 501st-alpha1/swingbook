@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../widgets/move_description_dialog.dart';
 
 class SessionScreen extends StatefulWidget {
   const SessionScreen({super.key});
@@ -284,11 +285,30 @@ class _Grid extends StatelessWidget {
                           child: Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  move.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                child: InkWell(
+                                  onTap: move.hasDescription
+                                      ? () => showMoveDescription(context, move)
+                                      : null,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          move.name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                decoration: move.hasDescription
+                                                    ? TextDecoration.underline
+                                                    : null,
+                                                decorationStyle: TextDecorationStyle.dotted,
+                                                decorationColor: Colors.grey.shade400,
+                                              ),
+                                        ),
+                                      ),
+                                      if (move.hasDescription)
+                                        Icon(Icons.info_outline, size: 12, color: Colors.grey.shade500),
+                                    ],
+                                  ),
                                 ),
                               ),
                               IconButton(
@@ -411,12 +431,21 @@ void _showLevelPicker(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Text(
               '${student.name} · ${move.name}',
               style: Theme.of(ctx).textTheme.titleMedium,
             ),
           ),
+          if (move.hasDescription)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Text(
+                move.description!,
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+              ),
+            ),
+          const SizedBox(height: 8),
           ...ProficiencyLevel.values.map((level) => ListTile(
                 leading: Container(
                   width: 28,

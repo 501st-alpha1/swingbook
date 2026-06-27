@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../models/move.dart';
 import '../providers/app_state.dart';
+import '../utils/short_name_suggester.dart';
+import '../widgets/move_description_dialog.dart';
 
 class CatalogScreen extends StatelessWidget {
   const CatalogScreen({super.key});
@@ -75,6 +77,10 @@ class _MoveTile extends StatelessWidget {
       child: ListTile(
         title: Text(move.name),
         subtitle: Text('${_typeLabel(move.type)} · ${_difficultyLabel(move.difficulty)}'),
+        onTap: move.hasDescription ? () => showMoveDescription(context, move) : null,
+        leading: move.hasDescription
+            ? Icon(Icons.notes, size: 20, color: Colors.grey.shade500)
+            : null,
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'edit') {
@@ -150,6 +156,7 @@ class _MoveEditorSheet extends StatefulWidget {
 
 class _MoveEditorSheetState extends State<_MoveEditorSheet> {
   late final TextEditingController _nameController;
+  late final TextEditingController _descriptionController;
   late MoveType _type;
   late Difficulty _difficulty;
 
@@ -157,6 +164,7 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.existing?.name ?? '');
+    _descriptionController = TextEditingController(text: widget.existing?.description ?? '');
     _type = widget.existing?.type ?? MoveType.push;
     _difficulty = widget.existing?.difficulty ?? Difficulty.beginner;
   }
@@ -164,12 +172,23 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
   @override
   void dispose() {
     _nameController.dispose();
+    _descriptionController.dispose();
     super.dispose();
+  }
+
+  void _applySuggestedName() {
+    final suggestion = suggestShortName(_descriptionController.text);
+    if (suggestion.isEmpty) return;
+    setState(() {
+      _nameController.text = suggestion;
+      _nameController.selection = TextSelection.collapsed(offset: suggestion.length);
+    });
   }
 
   void _save() {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
+    final description = _descriptionController.text.trim();
 
     final appState = context.read<AppState>();
     if (widget.existing == null) {
@@ -179,12 +198,15 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
         name: name,
         type: _type,
         difficulty: _difficulty,
+        description: description.isEmpty ? null : description,
       ));
     } else {
       appState.updateMove(widget.existing!.copyWith(
         name: name,
         type: _type,
         difficulty: _difficulty,
+        description: description.isEmpty ? null : description,
+        clearDescription: description.isEmpty,
       ));
     }
     Navigator.pop(context);
@@ -220,6 +242,26 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
             onSubmitted: (_) => _save(),
           ),
           const SizedBox(height: 16),
+          TextField(
+            controller: _descriptionController,
+            decoration: const InputDecoration(
+              labelText: 'Description (optional)',
+              hintText: 'For moves without one settled name — e.g. step-by-step reminder',
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+            maxLines: 3,
+            minLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _applySuggestedName,
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('Suggest name from description'),
+            ),
+          ),
           DropdownButtonFormField<MoveType>(
             initialValue: _type,
             decoration: const InputDecoration(

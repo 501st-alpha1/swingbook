@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../widgets/move_description_dialog.dart';
 
 class StudentDetailScreen extends StatefulWidget {
   const StudentDetailScreen({super.key, required this.studentId});
@@ -216,7 +217,37 @@ class _MoveRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(move.name, style: Theme.of(context).textTheme.titleSmall),
+            InkWell(
+              onTap: move.hasDescription ? () => showMoveDescription(context, move) : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(move.name, style: Theme.of(context).textTheme.titleSmall),
+                        if (move.hasDescription)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              move.description!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey.shade500,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (move.hasDescription)
+                    Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
+                ],
+              ),
+            ),
             const SizedBox(height: 8),
             ...roles.map((role) {
               final progress = student.progressFor(move.id, role);
