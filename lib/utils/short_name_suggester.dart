@@ -3,13 +3,15 @@
 ///
 /// This is a simple heuristic, not a smart summarizer: it splits the
 /// description on strong separators (commas, semicolons, arrows), then
-/// shortens each resulting segment to a few words and joins them with an
-/// arrow. It's meant as a starting point to edit, not a final answer —
-/// for genuinely tangled descriptions, expect to adjust the result by hand.
+/// compresses each segment into a short initialism (first letter of each
+/// word, with a few common connector words replaced by a digit/symbol
+/// instead of their initial), and joins the segments with an arrow. It's
+/// meant as a starting point to edit, not a final answer — for genuinely
+/// tangled descriptions, expect to adjust the result by hand.
 ///
 /// Example:
 ///   "right to left, to inside underarm spin, to stretch, back into reverse whip"
-///   -> "Right To Left → Inside Underarm Spin → Stretch → Reverse Whip"
+///   -> "R2L → IUS → S → RW"
 String suggestShortName(String description) {
   final trimmed = description.trim();
   if (trimmed.isEmpty) return '';
@@ -30,37 +32,59 @@ String suggestShortName(String description) {
   return shortened.join(' → ');
 }
 
-/// Leading connector phrases to strip from the start of a segment, so
-/// "to inside underarm spin" becomes "inside underarm spin". Ordered with
-/// longer/more specific phrases first so e.g. "back into" is matched before
-/// the shorter "into" would otherwise apply. We only trim leading
-/// connectors (never mid-segment words) to avoid stripping meaningful words
-/// like "back" when it's the actual subject of a short segment.
-const _leadingConnectors = ['back into', 'back to', 'into', 'to', 'and', 'then'];
+/// Connector words replaced by a digit/symbol instead of their initial
+/// letter, since the symbol reads more clearly in a compressed initialism
+/// (e.g. "to" -> "2" rather than "T", which could be mistaken for a real
+/// initial). Checked as whole words only, case-insensitive.
+const _wordSubstitutions = {
+  'to': '2',
+  'into': '2',
+  'for': '4',
+  'and': '&',
+};
+
+/// Words dropped entirely rather than contributing a letter or symbol —
+/// articles carry no identifying information even as an initial.
+const _droppedWords = {'a', 'an', 'the'};
+
+/// Leading connector words to strip from the very start of a segment
+/// before building the initialism. When a sentence is split on commas like
+/// "right to left, to inside underarm spin", the leading "to" on the second
+/// segment is really a joiner carried over from the comma, not a
+/// meaningful part of that segment — unlike the "to" inside "right to
+/// left", which is meaningful and should still become "2". So we only
+/// strip a connector when it's the first word of the segment.
+const _leadingStripWords = {'to', 'into', 'and', 'then', 'back'};
 
 String _shortenSegment(String segment) {
-  var working = segment;
-  for (final connector in _leadingConnectors) {
-    final pattern = RegExp('^${RegExp.escape(connector)}\\s+', caseSensitive: false);
-    if (pattern.hasMatch(working)) {
-      working = working.replaceFirst(pattern, '');
-      break;
-    }
-  }
-  // Also drop a leading article, if any (e.g. "a whip" -> "whip").
-  working = working.replaceFirst(RegExp(r'^(a|an|the)\s+', caseSensitive: false), '');
-
-  final words = working
+  var words = segment
       .split(RegExp(r'\s+'))
       .where((w) => w.isNotEmpty)
       .toList();
 
-  // Keep at most the first 4 words to stay reasonably short.
-  final kept = words.take(4).toList();
-  return kept.map(_capitalize).join(' ');
-}
+  // Strip leading connector words one at a time (e.g. "back into x" sheds
+  // both "back" and "into" if both are leading), but never strip the last
+  // remaining word, so a segment that's just "back" on its own still
+  // produces something rather than being emptied out.
+  while (words.length > 1 && _leadingStripWords.contains(words.first.toLowerCase())) {
+    words = words.skip(1).toList();
+  }
+  // Strip a leading article too, same rule.
+  while (words.length > 1 && _droppedWords.contains(words.first.toLowerCase())) {
+    words = words.skip(1).toList();
+  }
 
-String _capitalize(String word) {
-  if (word.isEmpty) return word;
-  return word[0].toUpperCase() + word.substring(1);
+  final parts = <String>[];
+  for (final word in words) {
+    final lower = word.toLowerCase();
+    if (_droppedWords.contains(lower)) continue;
+    final substitution = _wordSubstitutions[lower];
+    if (substitution != null) {
+      parts.add(substitution);
+    } else {
+      parts.add(word[0].toUpperCase());
+    }
+  }
+
+  return parts.join();
 }
