@@ -341,134 +341,278 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _Grid extends StatelessWidget {
+class _Grid extends StatefulWidget {
   const _Grid({required this.moves, required this.attendees, required this.role});
 
   final List<Move> moves;
   final List<Student> attendees;
   final Role role;
 
-  static const double _nameColWidth = 160;
+  @override
+  State<_Grid> createState() => _GridState();
+}
+
+class _GridState extends State<_Grid> {
+  static const double _nameColWidth = 180;
   static const double _cellWidth = 64;
   static const double _rowHeight = 56;
+  // Cap a section's visible height to roughly 7-8 rows; beyond that the
+  // body scrolls internally rather than pushing the rest of the page down
+  // indefinitely. Chosen to comfortably show both Leads and Follows
+  // sections without one swallowing the whole screen.
+  static const double _maxGridHeight = 420;
+
+  // Vertical scroll is shared between the pinned name column and the body.
+  final ScrollController _vNameController = ScrollController();
+  final ScrollController _vBodyController = ScrollController();
+  // Horizontal scroll is shared between the pinned header row and the body.
+  final ScrollController _hHeaderController = ScrollController();
+  final ScrollController _hBodyController = ScrollController();
+
+  bool _syncingV = false;
+  bool _syncingH = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _vNameController.addListener(() => _sync(_vNameController, _vBodyController, isVertical: true));
+    _vBodyController.addListener(() => _sync(_vBodyController, _vNameController, isVertical: true));
+    _hHeaderController.addListener(() => _sync(_hHeaderController, _hBodyController, isVertical: false));
+    _hBodyController.addListener(() => _sync(_hBodyController, _hHeaderController, isVertical: false));
+  }
+
+  void _sync(ScrollController from, ScrollController to, {required bool isVertical}) {
+    final guard = isVertical ? _syncingV : _syncingH;
+    if (guard) return;
+    if (isVertical) {
+      _syncingV = true;
+    } else {
+      _syncingH = true;
+    }
+    if (to.hasClients && to.offset != from.offset) {
+      to.jumpTo(from.offset);
+    }
+    if (isVertical) {
+      _syncingV = false;
+    } else {
+      _syncingH = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _vNameController.dispose();
+    _vBodyController.dispose();
+    _hHeaderController.dispose();
+    _hBodyController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    final moves = widget.moves;
+    final attendees = widget.attendees;
+    final role = widget.role;
+    final totalHeight = moves.length * _rowHeight;
+
+    return SizedBox(
+      // Cap the grid's height to the available space below it in the
+      // surrounding ListView; the body scrolls internally once content
+      // exceeds this. A generous fixed height keeps short lists compact
+      // while still allowing internal scroll for long ones.
+      height: (totalHeight + _rowHeight).clamp(_rowHeight * 2, _maxGridHeight).toDouble(),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row: attendee names
-          Row(
-            children: [
-              const SizedBox(width: _nameColWidth, height: _rowHeight),
-              ...attendees.map((s) => SizedBox(
-                    width: _cellWidth,
-                    height: _rowHeight,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          s.name,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ),
+          // Pinned header row: corner cell (role label) + attendee names,
+          // which scrolls horizontally in sync with the body.
+          SizedBox(
+            height: _rowHeight,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: _nameColWidth,
+                  height: _rowHeight,
+                  child: Center(
+                    child: Text(
+                      role == Role.lead ? 'Lead' : 'Follow',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                  )),
-            ],
-          ),
-          const Divider(height: 1),
-          // Move rows
-          ...moves.map((move) => Column(
-                children: [
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: _nameColWidth,
-                        height: _rowHeight,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  onTap: move.hasDescription
-                                      ? () => showMoveDescription(context, move)
-                                      : null,
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          move.name,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                decoration: move.hasDescription
-                                                    ? TextDecoration.underline
-                                                    : null,
-                                                decorationStyle: TextDecorationStyle.dotted,
-                                                decorationColor: Colors.grey.shade400,
-                                              ),
-                                        ),
-                                      ),
-                                      if (move.hasDescription)
-                                        Icon(Icons.info_outline, size: 12, color: Colors.grey.shade500),
-                                    ],
-                                  ),
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _hHeaderController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const ClampingScrollPhysics(),
+                    child: Row(
+                      children: attendees.map((s) => SizedBox(
+                            width: _cellWidth,
+                            height: _rowHeight,
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Text(
+                                  s.name,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, size: 18),
-                                tooltip: 'Undo exposure for everyone shown',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                onPressed: () => context.read<AppState>().adjustExposures(
-                                      move.id,
-                                      role,
-                                      attendees.map((s) => s.id).toList(),
-                                      -1,
-                                    ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add_circle_outline, size: 18),
-                                tooltip: 'Log exposure for everyone shown',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                onPressed: () => context.read<AppState>().adjustExposures(
-                                      move.id,
-                                      role,
-                                      attendees.map((s) => s.id).toList(),
-                                      1,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      ...attendees.map((student) {
-                        final progress = student.progressFor(move.id, role);
-                        return SizedBox(
-                          width: _cellWidth,
-                          height: _rowHeight,
-                          child: Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: _Cell(
-                              progress: progress,
-                              onTap: () => _showLevelPicker(context, student, move, role, progress.level),
                             ),
-                          ),
-                        );
-                      }),
-                    ],
+                          )).toList(),
+                    ),
                   ),
-                  const Divider(height: 1),
-                ],
-              )),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Body: pinned name column (vertical scroll only) + scrollable
+          // grid (both directions), synced to the same controllers above.
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: _nameColWidth,
+                  child: SingleChildScrollView(
+                    controller: _vNameController,
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      children: moves
+                          .map((move) => _MoveNameCell(
+                                move: move,
+                                role: role,
+                                attendees: attendees,
+                                height: _rowHeight,
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _hBodyController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const ClampingScrollPhysics(),
+                    child: SingleChildScrollView(
+                      controller: _vBodyController,
+                      physics: const ClampingScrollPhysics(),
+                      child: Column(
+                        children: moves
+                            .map((move) => Row(
+                                  children: attendees.map((student) {
+                                    final progress = student.progressFor(move.id, role);
+                                    return SizedBox(
+                                      width: _cellWidth,
+                                      height: _rowHeight,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: _Cell(
+                                          progress: progress,
+                                          onTap: () => _showLevelPicker(
+                                            context,
+                                            student,
+                                            move,
+                                            role,
+                                            progress.level,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// The pinned move-name cell: name (tappable for description) plus the
+/// +/- exposure controls, applying to all attendees shown in this section.
+class _MoveNameCell extends StatelessWidget {
+  const _MoveNameCell({
+    required this.move,
+    required this.role,
+    required this.attendees,
+    required this.height,
+  });
+
+  final Move move;
+  final Role role;
+  final List<Student> attendees;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: move.hasDescription ? () => showMoveDescription(context, move) : null,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        move.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              decoration: move.hasDescription ? TextDecoration.underline : null,
+                              decorationStyle: TextDecorationStyle.dotted,
+                              decorationColor: Colors.grey.shade400,
+                            ),
+                      ),
+                    ),
+                    if (move.hasDescription)
+                      Icon(Icons.info_outline, size: 12, color: Colors.grey.shade500),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline, size: 18),
+              tooltip: 'Undo exposure for everyone shown',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () => context.read<AppState>().adjustExposures(
+                    move.id,
+                    role,
+                    attendees.map((s) => s.id).toList(),
+                    -1,
+                  ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              tooltip: 'Log exposure for everyone shown',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () => context.read<AppState>().adjustExposures(
+                    move.id,
+                    role,
+                    attendees.map((s) => s.id).toList(),
+                    1,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
