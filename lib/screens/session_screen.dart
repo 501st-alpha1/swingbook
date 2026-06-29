@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../utils/linked_scroll_group.dart';
 import '../utils/move_filters.dart';
 import '../widgets/move_description_dialog.dart';
 
@@ -224,23 +225,21 @@ class _SessionGrid extends StatelessWidget {
       ),
       body: moves.isEmpty
           ? const Center(child: Text('No moves in catalog yet.'))
-          : ListView(
-              padding: const EdgeInsets.only(bottom: 88),
-              children: [
-                if (leads.isNotEmpty) ...[
-                  _SectionHeader(label: 'Leads'),
+          : CustomScrollView(
+              slivers: [
+                if (leads.isNotEmpty)
                   if (leadMoves.isEmpty)
-                    const _AllFilteredNotice()
+                    const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _Grid(moves: leadMoves, attendees: leads, role: Role.lead),
-                ],
-                if (follows.isNotEmpty) ...[
-                  _SectionHeader(label: 'Follows'),
+                    _GridSection(moves: leadMoves, attendees: leads, role: Role.lead),
+                if (follows.isNotEmpty)
                   if (followMoves.isEmpty)
-                    const _AllFilteredNotice()
+                    const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _Grid(moves: followMoves, attendees: follows, role: Role.follow),
-                ],
+                    _GridSection(moves: followMoves, attendees: follows, role: Role.follow),
+                // Bottom padding so the last row isn't flush against the
+                // floating action button.
+                const SliverToBoxAdapter(child: SizedBox(height: 88)),
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
@@ -324,87 +323,46 @@ void _showFilterSheet(
   );
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 4),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-}
-
-class _Grid extends StatefulWidget {
-  const _Grid({required this.moves, required this.attendees, required this.role});
+/// One sticky section of the session grid: a pinned attendee-name header
+/// row (with the role label in its corner cell) followed by a list of move
+/// rows, all sharing one section-local horizontal scroll position. Built as
+/// a sliver so multiple sections can sit in one CustomScrollView with each
+/// section's header pinning in turn as it scrolls to the top, then getting
+/// pushed off by the next section's header (via SliverMainAxisGroup).
+class _GridSection extends StatefulWidget {
+  const _GridSection({required this.moves, required this.attendees, required this.role});
 
   final List<Move> moves;
   final List<Student> attendees;
   final Role role;
 
   @override
-  State<_Grid> createState() => _GridState();
+  State<_GridSection> createState() => _GridSectionState();
 }
 
-class _GridState extends State<_Grid> {
+class _GridSectionState extends State<_GridSection> {
   static const double _nameColWidth = 180;
   static const double _cellWidth = 64;
   static const double _rowHeight = 56;
-  // Cap a section's visible height to roughly 7-8 rows; beyond that the
-  // body scrolls internally rather than pushing the rest of the page down
-  // indefinitely. Chosen to comfortably show both Leads and Follows
-  // sections without one swallowing the whole screen.
-  static const double _maxGridHeight = 420;
 
-  // Vertical scroll is shared between the pinned name column and the body.
-  final ScrollController _vNameController = ScrollController();
-  final ScrollController _vBodyController = ScrollController();
-  // Horizontal scroll is shared between the pinned header row and the body.
-  final ScrollController _hHeaderController = ScrollController();
-  final ScrollController _hBodyController = ScrollController();
-
-  bool _syncingV = false;
-  bool _syncingH = false;
+  // All horizontal scrollables in this section (the header row, plus one
+  // per move row) share their offset through this group. A plain shared
+  // ScrollController can't be attached to more than one Scrollable at a
+  // time, so each scrollable gets its own controller from the group and
+  // the group keeps them all in sync, including ones created/disposed
+  // later as the row list is lazily built.
+  final LinkedScrollGroup _scrollGroup = LinkedScrollGroup();
+  late final ScrollController _headerController;
 
   @override
   void initState() {
     super.initState();
-    _vNameController.addListener(() => _sync(_vNameController, _vBodyController, isVertical: true));
-    _vBodyController.addListener(() => _sync(_vBodyController, _vNameController, isVertical: true));
-    _hHeaderController.addListener(() => _sync(_hHeaderController, _hBodyController, isVertical: false));
-    _hBodyController.addListener(() => _sync(_hBodyController, _hHeaderController, isVertical: false));
-  }
-
-  void _sync(ScrollController from, ScrollController to, {required bool isVertical}) {
-    final guard = isVertical ? _syncingV : _syncingH;
-    if (guard) return;
-    if (isVertical) {
-      _syncingV = true;
-    } else {
-      _syncingH = true;
-    }
-    if (to.hasClients && to.offset != from.offset) {
-      to.jumpTo(from.offset);
-    }
-    if (isVertical) {
-      _syncingV = false;
-    } else {
-      _syncingH = false;
-    }
+    _headerController = _scrollGroup.addAndGet();
   }
 
   @override
   void dispose() {
-    _vNameController.dispose();
-    _vBodyController.dispose();
-    _hHeaderController.dispose();
-    _hBodyController.dispose();
+    _headerController.dispose();
     super.dispose();
   }
 
@@ -413,41 +371,201 @@ class _GridState extends State<_Grid> {
     final moves = widget.moves;
     final attendees = widget.attendees;
     final role = widget.role;
-    final totalHeight = moves.length * _rowHeight;
 
-    return SizedBox(
-      // Cap the grid's height to the available space below it in the
-      // surrounding ListView; the body scrolls internally once content
-      // exceeds this. A generous fixed height keeps short lists compact
-      // while still allowing internal scroll for long ones.
-      height: (totalHeight + _rowHeight).clamp(_rowHeight * 2, _maxGridHeight).toDouble(),
-      child: Column(
-        children: [
-          // Pinned header row: corner cell (role label) + attendee names,
-          // which scrolls horizontally in sync with the body.
-          SizedBox(
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _SectionHeaderDelegate(
             height: _rowHeight,
+            nameColWidth: _nameColWidth,
+            cellWidth: _cellWidth,
+            role: role,
+            attendees: attendees,
+            scrollController: _headerController,
+          ),
+        ),
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final move = moves[index];
+              return _MoveRow(
+                key: ValueKey(move.id),
+                move: move,
+                role: role,
+                attendees: attendees,
+                scrollGroup: _scrollGroup,
+                nameColWidth: _nameColWidth,
+                cellWidth: _cellWidth,
+                rowHeight: _rowHeight,
+              );
+            },
+            childCount: moves.length,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One move row within a [_GridSection]: the pinned move-name cell plus a
+/// horizontally scrollable row of level cells, one per attendee. Owns its
+/// own [ScrollController] obtained from the section's [LinkedScrollGroup]
+/// so its horizontal position stays in sync with the header and every
+/// other row, even as rows are built and disposed lazily.
+class _MoveRow extends StatefulWidget {
+  const _MoveRow({
+    super.key,
+    required this.move,
+    required this.role,
+    required this.attendees,
+    required this.scrollGroup,
+    required this.nameColWidth,
+    required this.cellWidth,
+    required this.rowHeight,
+  });
+
+  final Move move;
+  final Role role;
+  final List<Student> attendees;
+  final LinkedScrollGroup scrollGroup;
+  final double nameColWidth;
+  final double cellWidth;
+  final double rowHeight;
+
+  @override
+  State<_MoveRow> createState() => _MoveRowState();
+}
+
+class _MoveRowState extends State<_MoveRow> {
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.scrollGroup.addAndGet();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final move = widget.move;
+    final role = widget.role;
+    final attendees = widget.attendees;
+
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _MoveNameCell(
+              move: move,
+              role: role,
+              attendees: attendees,
+              height: widget.rowHeight,
+              width: widget.nameColWidth,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _controller,
+                scrollDirection: Axis.horizontal,
+                physics: const ClampingScrollPhysics(),
+                child: Row(
+                  children: attendees.map((student) {
+                    final progress = student.progressFor(move.id, role);
+                    return SizedBox(
+                      width: widget.cellWidth,
+                      height: widget.rowHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: _Cell(
+                          progress: progress,
+                          onTap: () => _showLevelPicker(
+                            context,
+                            student,
+                            move,
+                            role,
+                            progress.level,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const Divider(height: 1),
+      ],
+    );
+  }
+}
+
+/// Delegate for the pinned attendee-name header row of one [_GridSection].
+/// Renders the role-label corner cell plus a horizontally scrollable row
+/// of attendee names, kept in sync with the section's move rows via a
+/// shared [ScrollController].
+class _SectionHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _SectionHeaderDelegate({
+    required this.height,
+    required this.nameColWidth,
+    required this.cellWidth,
+    required this.role,
+    required this.attendees,
+    required this.scrollController,
+  });
+
+  final double height;
+  final double nameColWidth;
+  final double cellWidth;
+  final Role role;
+  final List<Student> attendees;
+  final ScrollController scrollController;
+
+  // +1 accounts for the hairline Divider rendered below the name row.
+  @override
+  double get minExtent => height + 1;
+
+  @override
+  double get maxExtent => height + 1;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.scaffoldBackgroundColor,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: height,
             child: Row(
               children: [
                 SizedBox(
-                  width: _nameColWidth,
-                  height: _rowHeight,
+                  width: nameColWidth,
+                  height: height,
                   child: Center(
                     child: Text(
                       role == Role.lead ? 'Lead' : 'Follow',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    controller: _hHeaderController,
+                    controller: scrollController,
                     scrollDirection: Axis.horizontal,
                     physics: const ClampingScrollPhysics(),
                     child: Row(
                       children: attendees.map((s) => SizedBox(
-                            width: _cellWidth,
-                            height: _rowHeight,
+                            width: cellWidth,
+                            height: height,
                             child: Center(
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -456,10 +574,7 @@ class _GridState extends State<_Grid> {
                                   textAlign: TextAlign.center,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                  style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ),
@@ -471,94 +586,43 @@ class _GridState extends State<_Grid> {
             ),
           ),
           const Divider(height: 1),
-          // Body: pinned name column (vertical scroll only) + scrollable
-          // grid (both directions), synced to the same controllers above.
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: _nameColWidth,
-                  child: SingleChildScrollView(
-                    controller: _vNameController,
-                    physics: const ClampingScrollPhysics(),
-                    child: Column(
-                      children: moves
-                          .map((move) => _MoveNameCell(
-                                move: move,
-                                role: role,
-                                attendees: attendees,
-                                height: _rowHeight,
-                              ))
-                          .toList(),
-                    ),
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _hBodyController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const ClampingScrollPhysics(),
-                    child: SingleChildScrollView(
-                      controller: _vBodyController,
-                      physics: const ClampingScrollPhysics(),
-                      child: Column(
-                        children: moves
-                            .map((move) => Row(
-                                  children: attendees.map((student) {
-                                    final progress = student.progressFor(move.id, role);
-                                    return SizedBox(
-                                      width: _cellWidth,
-                                      height: _rowHeight,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(4),
-                                        child: _Cell(
-                                          progress: progress,
-                                          onTap: () => _showLevelPicker(
-                                            context,
-                                            student,
-                                            move,
-                                            role,
-                                            progress.level,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ))
-                            .toList(),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
+
+  @override
+  bool shouldRebuild(covariant _SectionHeaderDelegate oldDelegate) {
+    return oldDelegate.attendees != attendees ||
+        oldDelegate.role != role ||
+        oldDelegate.height != height ||
+        oldDelegate.nameColWidth != nameColWidth ||
+        oldDelegate.cellWidth != cellWidth;
+  }
 }
 
-/// The pinned move-name cell: name (tappable for description) plus the
-/// +/- exposure controls, applying to all attendees shown in this section.
+/// The move-name cell at the start of each row: name (tappable for
+/// description) plus the +/- exposure controls, applying to all attendees
+/// shown in this section.
 class _MoveNameCell extends StatelessWidget {
   const _MoveNameCell({
     required this.move,
     required this.role,
     required this.attendees,
     required this.height,
+    required this.width,
   });
 
   final Move move;
   final Role role;
   final List<Student> attendees;
   final double height;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      width: width,
       height: height,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
