@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../utils/move_filters.dart';
 import '../widgets/move_description_dialog.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -18,6 +19,9 @@ class _SessionScreenState extends State<SessionScreen> {
   // studentId -> the role they're playing for this session
   final Map<String, Role> _sessionRoles = {};
   bool _pickingAttendees = true;
+
+  // ids of currently-enabled filters from allMoveFilters
+  final Set<String> _activeFilterIds = {};
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +45,14 @@ class _SessionScreenState extends State<SessionScreen> {
     return _SessionGrid(
       sessionRoles: _sessionRoles,
       onEditAttendees: () => setState(() => _pickingAttendees = true),
+      activeFilterIds: _activeFilterIds,
+      onToggleFilter: (id) => setState(() {
+        if (_activeFilterIds.contains(id)) {
+          _activeFilterIds.remove(id);
+        } else {
+          _activeFilterIds.add(id);
+        }
+      }),
     );
   }
 }
@@ -152,10 +164,17 @@ class _RoleToggle extends StatelessWidget {
 }
 
 class _SessionGrid extends StatelessWidget {
-  const _SessionGrid({required this.sessionRoles, required this.onEditAttendees});
+  const _SessionGrid({
+    required this.sessionRoles,
+    required this.onEditAttendees,
+    required this.activeFilterIds,
+    required this.onToggleFilter,
+  });
 
   final Map<String, Role> sessionRoles;
   final VoidCallback onEditAttendees;
+  final Set<String> activeFilterIds;
+  final ValueChanged<String> onToggleFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -179,10 +198,23 @@ class _SessionGrid extends StatelessWidget {
     leads.sort((a, b) => a.name.compareTo(b.name));
     follows.sort((a, b) => a.name.compareTo(b.name));
 
+    final activeFilters = allMoveFilters.where((f) => activeFilterIds.contains(f.id)).toList();
+    final leadMoves = _filteredMoves(moves, leads, Role.lead, activeFilters);
+    final followMoves = _filteredMoves(moves, follows, Role.follow, activeFilters);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Session · ${sessionRoles.length} here'),
         actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: activeFilterIds.isNotEmpty,
+              label: Text('${activeFilterIds.length}'),
+              child: const Icon(Icons.filter_list),
+            ),
+            tooltip: 'Filter moves',
+            onPressed: () => _showFilterSheet(context, activeFilterIds, onToggleFilter),
+          ),
           IconButton(
             icon: const Icon(Icons.group_outlined),
             tooltip: 'Edit attendees',
@@ -197,11 +229,17 @@ class _SessionGrid extends StatelessWidget {
               children: [
                 if (leads.isNotEmpty) ...[
                   _SectionHeader(label: 'Leads'),
-                  _Grid(moves: moves, attendees: leads, role: Role.lead),
+                  if (leadMoves.isEmpty)
+                    const _AllFilteredNotice()
+                  else
+                    _Grid(moves: leadMoves, attendees: leads, role: Role.lead),
                 ],
                 if (follows.isNotEmpty) ...[
                   _SectionHeader(label: 'Follows'),
-                  _Grid(moves: moves, attendees: follows, role: Role.follow),
+                  if (followMoves.isEmpty)
+                    const _AllFilteredNotice()
+                  else
+                    _Grid(moves: followMoves, attendees: follows, role: Role.follow),
                 ],
               ],
             ),
@@ -212,6 +250,78 @@ class _SessionGrid extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Applies all active filters to [moves] for a single section (one role's
+/// worth of attendees). A move is hidden if any active filter's
+/// [MoveFilter.shouldHide] returns true for it. If [attendees] is empty,
+/// no filtering is applied (there's nothing to judge "everyone" against).
+List<Move> _filteredMoves(
+  List<Move> moves,
+  List<Student> attendees,
+  Role role,
+  List<MoveFilter> activeFilters,
+) {
+  if (attendees.isEmpty || activeFilters.isEmpty) return moves;
+  return moves.where((move) {
+    return !activeFilters.any((f) => f.shouldHide(move, attendees, role));
+  }).toList();
+}
+
+class _AllFilteredNotice extends StatelessWidget {
+  const _AllFilteredNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Text(
+        'All moves are hidden by your current filters.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+      ),
+    );
+  }
+}
+
+void _showFilterSheet(
+  BuildContext context,
+  Set<String> activeFilterIds,
+  ValueChanged<String> onToggleFilter,
+) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('Filter moves', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ),
+              ...allMoveFilters.map((filter) {
+                final isActive = activeFilterIds.contains(filter.id);
+                return SwitchListTile(
+                  title: Text(filter.label),
+                  subtitle: Text(filter.description),
+                  value: isActive,
+                  onChanged: (_) {
+                    onToggleFilter(filter.id);
+                    setState(() {}); // refresh the sheet's own checkmarks
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _SectionHeader extends StatelessWidget {
