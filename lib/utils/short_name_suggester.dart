@@ -11,7 +11,7 @@
 ///
 /// Example:
 ///   "right to left, to inside underarm spin, to stretch, back into reverse whip"
-///   -> "R2L → IUS → S → RW"
+///   -> "R2L→IUS→S→RW"
 String suggestShortName(String description) {
   final trimmed = description.trim();
   if (trimmed.isEmpty) return '';
@@ -29,7 +29,7 @@ String suggestShortName(String description) {
   if (segments.isEmpty) return trimmed;
 
   final shortened = segments.map(_shortenSegment).where((s) => s.isNotEmpty).toList();
-  return shortened.join(' → ');
+  return shortened.join('→');
 }
 
 /// Connector words replaced by a digit/symbol instead of their initial
