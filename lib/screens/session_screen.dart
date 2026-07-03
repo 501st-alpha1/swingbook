@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../theme.dart';
 import '../utils/linked_scroll_group.dart';
 import '../utils/move_filters.dart';
+import '../utils/move_sort.dart';
 import '../widgets/move_description_dialog.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -180,7 +181,7 @@ class _SessionGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final moves = [...appState.catalog]..sort((a, b) => a.name.compareTo(b.name));
+    final moves = sortedMoves(appState.catalog);
 
     // Pull latest student records (in case of edits elsewhere) and pair each
     // with their assigned session role.

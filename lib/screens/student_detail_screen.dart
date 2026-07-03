@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../utils/move_sort.dart';
 import '../widgets/move_description_dialog.dart';
 
 class StudentDetailScreen extends StatefulWidget {
@@ -184,7 +185,7 @@ class _MovesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final moves = [...appState.catalog]..sort((a, b) => a.name.compareTo(b.name));
+    final moves = sortedMoves(appState.catalog);
 
     if (moves.isEmpty) {
       return const Center(child: Text('No moves in catalog yet.'));
