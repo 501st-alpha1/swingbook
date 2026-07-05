@@ -232,12 +232,12 @@ class _SessionGrid extends StatelessWidget {
                   if (leadMoves.isEmpty)
                     const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _GridSection(moves: leadMoves, attendees: leads, role: Role.lead),
+                    _GridSection(moves: leadMoves, attendees: leads, role: Role.lead, sessionRoles: sessionRoles),
                 if (follows.isNotEmpty)
                   if (followMoves.isEmpty)
                     const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _GridSection(moves: followMoves, attendees: follows, role: Role.follow),
+                    _GridSection(moves: followMoves, attendees: follows, role: Role.follow, sessionRoles: sessionRoles),
                 // Bottom padding so the last row isn't flush against the
                 // floating action button.
                 const SliverToBoxAdapter(child: SizedBox(height: 88)),
@@ -331,11 +331,12 @@ void _showFilterSheet(
 /// section's header pinning in turn as it scrolls to the top, then getting
 /// pushed off by the next section's header (via SliverMainAxisGroup).
 class _GridSection extends StatefulWidget {
-  const _GridSection({required this.moves, required this.attendees, required this.role});
+  const _GridSection({required this.moves, required this.attendees, required this.role, required this.sessionRoles});
 
   final List<Move> moves;
   final List<Student> attendees;
   final Role role;
+  final Map<String, Role> sessionRoles;
 
   @override
   State<_GridSection> createState() => _GridSectionState();
@@ -399,6 +400,7 @@ class _GridSectionState extends State<_GridSection> {
                 nameColWidth: _nameColWidth,
                 cellWidth: _cellWidth,
                 rowHeight: _rowHeight,
+                sessionRoles: widget.sessionRoles,
               );
             },
             childCount: moves.length,
@@ -424,6 +426,7 @@ class _MoveRow extends StatefulWidget {
     required this.nameColWidth,
     required this.cellWidth,
     required this.rowHeight,
+    required this.sessionRoles,
   });
 
   final Move move;
@@ -433,6 +436,7 @@ class _MoveRow extends StatefulWidget {
   final double nameColWidth;
   final double cellWidth;
   final double rowHeight;
+  final Map<String, Role> sessionRoles;
 
   @override
   State<_MoveRow> createState() => _MoveRowState();
@@ -470,6 +474,7 @@ class _MoveRowState extends State<_MoveRow> {
               attendees: attendees,
               height: widget.rowHeight,
               width: widget.nameColWidth,
+              sessionRoles: widget.sessionRoles,
             ),
             Expanded(
               child: SingleChildScrollView(
@@ -612,6 +617,7 @@ class _MoveNameCell extends StatelessWidget {
     required this.attendees,
     required this.height,
     required this.width,
+    required this.sessionRoles,
   });
 
   final Move move;
@@ -619,6 +625,7 @@ class _MoveNameCell extends StatelessWidget {
   final List<Student> attendees;
   final double height;
   final double width;
+  final Map<String, Role> sessionRoles;
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +638,7 @@ class _MoveNameCell extends StatelessWidget {
           children: [
             Expanded(
               child: InkWell(
-                onTap: move.hasDescription ? () => showMoveDescription(context, move) : null,
+                onTap: () => showMovePopup(context, move, sessionRoles),
                 child: Row(
                   children: [
                     Expanded(
@@ -646,8 +653,7 @@ class _MoveNameCell extends StatelessWidget {
                             ),
                       ),
                     ),
-                    if (move.hasDescription)
-                      Icon(Icons.info_outline, size: 12, color: Colors.grey.shade500),
+                    Icon(Icons.info_outline, size: 12, color: Colors.grey.shade500),
                   ],
                 ),
               ),

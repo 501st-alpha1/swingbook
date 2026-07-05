@@ -219,7 +219,7 @@ class _MoveRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onTap: move.hasDescription ? () => showMoveDescription(context, move) : null,
+              onTap: move.hasDescription ? () => showMovePopup(context, move, const {}) : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
