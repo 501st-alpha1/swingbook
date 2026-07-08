@@ -832,7 +832,7 @@ void _showQuickAddMove(BuildContext context) {
                 border: OutlineInputBorder(),
               ),
               items: MoveType.values
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
+                  .map((t) => DropdownMenuItem(value: t, child: Text(t.label)))
                   .toList(),
               onChanged: (v) => setState(() => type = v ?? type),
             ),

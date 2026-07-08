@@ -1,4 +1,16 @@
-enum MoveType { push, pass, whip, other }
+enum MoveType { push, pass, whip, starterStep, throwOut, pickUp, other }
+
+extension MoveTypeLabel on MoveType {
+  String get label => switch (this) {
+        MoveType.push => 'Push',
+        MoveType.pass => 'Pass',
+        MoveType.whip => 'Whip',
+        MoveType.starterStep => 'Starter step',
+        MoveType.throwOut => 'Throw out',
+        MoveType.pickUp => 'Pick up',
+        MoveType.other => 'Other',
+      };
+}
 
 enum Difficulty { beginner, intermediate, advanced }
 

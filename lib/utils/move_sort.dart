@@ -1,11 +1,14 @@
 import '../models/move.dart';
 
-/// Type display order: pass → push → whip → other.
+/// Type display order: pass → push → whip → starter → throw out → pick up → other.
 const _typeOrder = {
   MoveType.pass: 0,
   MoveType.push: 1,
   MoveType.whip: 2,
-  MoveType.other: 3,
+  MoveType.starterStep: 3,
+  MoveType.throwOut: 4,
+  MoveType.pickUp: 5,
+  MoveType.other: 6,
 };
 
 /// Sorts [moves] by difficulty (beginner → intermediate → advanced), then

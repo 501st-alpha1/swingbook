@@ -99,12 +99,7 @@ class _MoveTile extends StatelessWidget {
   }
 }
 
-String _typeLabel(MoveType type) => switch (type) {
-      MoveType.push => 'Push',
-      MoveType.pass => 'Pass',
-      MoveType.whip => 'Whip',
-      MoveType.other => 'Other',
-    };
+String _typeLabel(MoveType type) => type.label;
 
 String _difficultyLabel(Difficulty d) => switch (d) {
       Difficulty.beginner => 'Beginner',
