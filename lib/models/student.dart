@@ -29,26 +29,45 @@ enum ProficiencyLevel {
 class MoveProgress {
   final ProficiencyLevel level;
   final int exposures;
+  final int practiceCount;
+
+  /// ISO-8601 date string (yyyy-MM-dd) of the last time practice was logged,
+  /// or null if never practiced.
+  final String? lastPracticed;
 
   const MoveProgress({
     this.level = ProficiencyLevel.notTried,
     this.exposures = 0,
+    this.practiceCount = 0,
+    this.lastPracticed,
   });
 
   factory MoveProgress.fromJson(Map<String, dynamic> json) => MoveProgress(
         level: ProficiencyLevel.values[json['level'] as int? ?? 0],
         exposures: json['exposures'] as int? ?? 0,
+        practiceCount: json['practiceCount'] as int? ?? 0,
+        lastPracticed: json['lastPracticed'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'level': level.index,
         'exposures': exposures,
+        if (practiceCount > 0) 'practiceCount': practiceCount,
+        if (lastPracticed != null) 'lastPracticed': lastPracticed,
       };
 
-  MoveProgress copyWith({ProficiencyLevel? level, int? exposures}) =>
+  MoveProgress copyWith({
+    ProficiencyLevel? level,
+    int? exposures,
+    int? practiceCount,
+    String? lastPracticed,
+    bool clearLastPracticed = false,
+  }) =>
       MoveProgress(
         level: level ?? this.level,
         exposures: exposures ?? this.exposures,
+        practiceCount: practiceCount ?? this.practiceCount,
+        lastPracticed: clearLastPracticed ? null : (lastPracticed ?? this.lastPracticed),
       );
 }
 

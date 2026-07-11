@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../utils/date_format.dart';
 
 /// Full-page drill-down view for practising one [move] in a session.
 ///
@@ -246,8 +247,20 @@ class _AttendeeRow extends StatelessWidget {
                 ),
               ),
               Text(
-                '${progress.exposures}×',
+                'exp: ${progress.exposures}×',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _PracticeStepper(
+                  progress: progress,
+                  onAdjust: (delta) => context.read<AppState>().adjustPracticeCount(
+                        live.id, move.id, role, delta),
+                ),
               ),
             ],
           ),
@@ -258,6 +271,55 @@ class _AttendeeRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Compact practice count stepper with last-practiced date.
+class _PracticeStepper extends StatelessWidget {
+  const _PracticeStepper({required this.progress, required this.onAdjust});
+
+  final MoveProgress progress;
+  final ValueChanged<int> onAdjust;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final teal = isDark ? AppTheme.tealDark : AppTheme.teal;
+
+    return Row(
+      children: [
+        Icon(Icons.fitness_center, size: 14, color: teal),
+        const SizedBox(width: 4),
+        Text(
+          'Practiced: ${progress.practiceCount}×',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: teal),
+        ),
+        if (progress.lastPracticed != null) ...[
+          Text(
+            '  ·  last ${formatShortDate(progress.lastPracticed!)}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+        ],
+        const Spacer(),
+        IconButton(
+          icon: const Icon(Icons.remove_circle_outline, size: 18),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: 'Decrease practice count',
+          onPressed: progress.practiceCount > 0 ? () => onAdjust(-1) : null,
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline, size: 18),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: 'Log practice session',
+          onPressed: () => onAdjust(1),
+        ),
+      ],
     );
   }
 }

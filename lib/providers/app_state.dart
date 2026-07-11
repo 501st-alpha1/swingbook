@@ -112,6 +112,32 @@ class AppState extends ChangeNotifier {
   ) =>
       adjustExposures(moveId, role, [studentId], delta);
 
+  /// Adjust practice count for a single student+move+role by [delta],
+  /// clamped at 0. On increment, auto-stamps today's date as [lastPracticed].
+  /// On decrement to zero, clears [lastPracticed].
+  Future<void> adjustPracticeCount(
+    String studentId,
+    String moveId,
+    Role role,
+    int delta,
+  ) async {
+    final student = _students.firstWhere((s) => s.id == studentId);
+    final movesMap = Map<String, Map<Role, MoveProgress>>.from(
+      student.moves.map((k, v) => MapEntry(k, Map<Role, MoveProgress>.from(v))),
+    );
+    final roleMap = movesMap[moveId] ?? {};
+    final current = roleMap[role] ?? const MoveProgress();
+    final newCount = (current.practiceCount + delta).clamp(0, 1 << 30);
+    final today = DateTime.now().toIso8601String().substring(0, 10); // yyyy-MM-dd
+    roleMap[role] = current.copyWith(
+      practiceCount: newCount,
+      lastPracticed: newCount > 0 && delta > 0 ? today : null,
+      clearLastPracticed: newCount == 0,
+    );
+    movesMap[moveId] = roleMap;
+    await updateStudent(student.copyWith(moves: movesMap));
+  }
+
   /// Set proficiency level for a single student + move + role.
   Future<void> setLevel(
     String studentId,

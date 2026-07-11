@@ -5,6 +5,7 @@ import '../models/move.dart';
 import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../theme.dart';
+import '../utils/date_format.dart';
 import '../utils/move_sort.dart';
 import '../widgets/move_description_dialog.dart';
 
@@ -254,29 +255,43 @@ class _MoveRow extends StatelessWidget {
               final progress = student.progressFor(move.id, role);
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 56,
-                      child: Text(
-                        role == Role.lead ? 'Lead' : 'Follow',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                      ),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 56,
+                          child: Text(
+                            role == Role.lead ? 'Lead' : 'Follow',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+                          ),
+                        ),
+                        Expanded(
+                          child: _LevelSelector(
+                            level: progress.level,
+                            onChanged: (level) => context
+                                .read<AppState>()
+                                .setLevel(student.id, move.id, role, level),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        _ExposureStepper(
+                          exposures: progress.exposures,
+                          onAdjust: (delta) => context
+                              .read<AppState>()
+                              .adjustExposureForStudent(student.id, move.id, role, delta),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: _LevelSelector(
-                        level: progress.level,
-                        onChanged: (level) => context
+                    Padding(
+                      padding: const EdgeInsets.only(left: 56, top: 2),
+                      child: _PracticeRow(
+                        progress: progress,
+                        onAdjust: (delta) => context
                             .read<AppState>()
-                            .setLevel(student.id, move.id, role, level),
+                            .adjustPracticeCount(student.id, move.id, role, delta),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    _ExposureStepper(
-                      exposures: progress.exposures,
-                      onAdjust: (delta) => context
-                          .read<AppState>()
-                          .adjustExposureForStudent(student.id, move.id, role, delta),
                     ),
                   ],
                 ),
@@ -389,6 +404,54 @@ class _LevelSelector extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+/// Compact inline row showing practice count + last date + +/- controls.
+class _PracticeRow extends StatelessWidget {
+  const _PracticeRow({required this.progress, required this.onAdjust});
+
+  final MoveProgress progress;
+  final ValueChanged<int> onAdjust;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final teal = isDark ? AppTheme.tealDark : AppTheme.teal;
+    final lastDate = progress.lastPracticed != null
+        ? formatShortDate(progress.lastPracticed!)
+        : null;
+
+    return Row(
+      children: [
+        Icon(Icons.fitness_center, size: 12, color: teal),
+        const SizedBox(width: 4),
+        Text(
+          '${progress.practiceCount}×',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: teal),
+        ),
+        if (lastDate != null) ...[
+          Text(
+            '  ·  $lastDate',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+        ],
+        const Spacer(),
+        _StepperButton(
+          icon: Icons.remove,
+          tooltip: 'Decrease practice count',
+          onPressed: progress.practiceCount > 0 ? () => onAdjust(-1) : null,
+        ),
+        _StepperButton(
+          icon: Icons.add,
+          tooltip: 'Log practice session',
+          onPressed: () => onAdjust(1),
+        ),
+      ],
     );
   }
 }
