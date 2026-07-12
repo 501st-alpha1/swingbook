@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../theme.dart';
 import '../utils/linked_scroll_group.dart';
 import '../utils/move_filters.dart';
+import '../utils/move_session_sort.dart';
 import '../utils/move_sort.dart';
 import '../widgets/move_description_dialog.dart';
 
@@ -24,6 +25,9 @@ class _SessionScreenState extends State<SessionScreen> {
 
   // ids of currently-enabled filters from allMoveFilters
   final Set<String> _activeFilterIds = {};
+
+  // id of the active sort from allSessionSorts
+  String _activeSortId = defaultSessionSortId;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +59,8 @@ class _SessionScreenState extends State<SessionScreen> {
           _activeFilterIds.add(id);
         }
       }),
+      activeSortId: _activeSortId,
+      onSortChanged: (id) => setState(() => _activeSortId = id),
     );
   }
 }
@@ -171,12 +177,16 @@ class _SessionGrid extends StatelessWidget {
     required this.onEditAttendees,
     required this.activeFilterIds,
     required this.onToggleFilter,
+    required this.activeSortId,
+    required this.onSortChanged,
   });
 
   final Map<String, Role> sessionRoles;
   final VoidCallback onEditAttendees;
   final Set<String> activeFilterIds;
   final ValueChanged<String> onToggleFilter;
+  final String activeSortId;
+  final ValueChanged<String> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -201,8 +211,10 @@ class _SessionGrid extends StatelessWidget {
     follows.sort((a, b) => a.name.compareTo(b.name));
 
     final activeFilters = allMoveFilters.where((f) => activeFilterIds.contains(f.id)).toList();
-    final leadMoves = _filteredMoves(moves, leads, Role.lead, activeFilters);
-    final followMoves = _filteredMoves(moves, follows, Role.follow, activeFilters);
+    final leadMoves = _sortedFilteredMoves(moves, leads, Role.lead, activeFilters, activeSortId);
+    final followMoves = _sortedFilteredMoves(moves, follows, Role.follow, activeFilters, activeSortId);
+
+    final hasActiveOptions = activeFilterIds.isNotEmpty || activeSortId != defaultSessionSortId;
 
     return Scaffold(
       appBar: AppBar(
@@ -210,12 +222,17 @@ class _SessionGrid extends StatelessWidget {
         actions: [
           IconButton(
             icon: Badge(
-              isLabelVisible: activeFilterIds.isNotEmpty,
-              label: Text('${activeFilterIds.length}'),
-              child: const Icon(Icons.filter_list),
+              isLabelVisible: hasActiveOptions,
+              child: const Icon(Icons.tune),
             ),
-            tooltip: 'Filter moves',
-            onPressed: () => _showFilterSheet(context, activeFilterIds, onToggleFilter),
+            tooltip: 'Sort & filter',
+            onPressed: () => _showSortFilterSheet(
+              context,
+              activeFilterIds,
+              onToggleFilter,
+              activeSortId,
+              onSortChanged,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.group_outlined),
@@ -252,20 +269,27 @@ class _SessionGrid extends StatelessWidget {
   }
 }
 
-/// Applies all active filters to [moves] for a single section (one role's
-/// worth of attendees). A move is hidden if any active filter's
-/// [MoveFilter.shouldHide] returns true for it. If [attendees] is empty,
-/// no filtering is applied (there's nothing to judge "everyone" against).
-List<Move> _filteredMoves(
+/// Applies all active filters then the active sort to [moves] for a single
+/// section. Filtering is skipped when [attendees] is empty or no filters are
+/// active. Sorting always applies (falls back to catalog order when the sort
+/// needs attendee data but there are none).
+List<Move> _sortedFilteredMoves(
   List<Move> moves,
   List<Student> attendees,
   Role role,
   List<MoveFilter> activeFilters,
+  String activeSortId,
 ) {
-  if (attendees.isEmpty || activeFilters.isEmpty) return moves;
-  return moves.where((move) {
-    return !activeFilters.any((f) => f.shouldHide(move, attendees, role));
-  }).toList();
+  var result = moves;
+  if (attendees.isNotEmpty && activeFilters.isNotEmpty) {
+    result = moves.where((move) {
+      return !activeFilters.any((f) => f.shouldHide(move, attendees, role));
+    }).toList();
+  }
+  if (attendees.isNotEmpty) {
+    result = [...result]..sort(sessionSortComparator(activeSortId, attendees, role));
+  }
+  return result;
 }
 
 class _AllFilteredNotice extends StatelessWidget {
@@ -283,40 +307,64 @@ class _AllFilteredNotice extends StatelessWidget {
   }
 }
 
-void _showFilterSheet(
+void _showSortFilterSheet(
   BuildContext context,
   Set<String> activeFilterIds,
   ValueChanged<String> onToggleFilter,
+  String activeSortId,
+  ValueChanged<String> onSortChanged,
 ) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('Filter moves', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              ),
-              ...allMoveFilters.map((filter) {
-                final isActive = activeFilterIds.contains(filter.id);
-                return SwitchListTile(
-                  title: Text(filter.label),
-                  subtitle: Text(filter.description),
-                  value: isActive,
-                  onChanged: (_) {
-                    onToggleFilter(filter.id);
-                    setState(() {}); // refresh the sheet's own checkmarks
-                  },
-                );
-              }),
-              const SizedBox(height: 8),
-            ],
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text('Sort', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ),
+                ...allSessionSorts.map((sort) {
+                  final isActive = sort.id == activeSortId;
+                  return RadioListTile<String>(
+                    title: Text(sort.label),
+                    value: sort.id,
+                    groupValue: activeSortId,
+                    onChanged: (id) {
+                      if (id != null) {
+                        onSortChanged(id);
+                        setState(() {});
+                      }
+                    },
+                    selected: isActive,
+                  );
+                }),
+                const Divider(),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  child: Text('Filter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ),
+                ...allMoveFilters.map((filter) {
+                  final isActive = activeFilterIds.contains(filter.id);
+                  return SwitchListTile(
+                    title: Text(filter.label),
+                    subtitle: Text(filter.description),
+                    value: isActive,
+                    onChanged: (_) {
+                      onToggleFilter(filter.id);
+                      setState(() {});
+                    },
+                  );
+                }),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

@@ -48,4 +48,15 @@ final List<MoveFilter> allMoveFilters = [
       );
     },
   ),
+  MoveFilter(
+    id: 'hide_practiced_today',
+    label: 'Hide moves practiced today',
+    description: 'Hides a move if every attendee shown has already logged a practice session for it today.',
+    shouldHide: (move, attendees, role) {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+      return attendees.every(
+        (s) => s.progressFor(move.id, role).lastPracticed == today,
+      );
+    },
+  ),
 ];
