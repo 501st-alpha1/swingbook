@@ -19,6 +19,8 @@ class SkillFocusPage extends StatelessWidget {
     super.key,
     required this.move,
     required this.sessionRoles,
+    this.sessionExposureDeltas = const {},
+    this.onExposureAdjusted,
   });
 
   final Move move;
@@ -27,6 +29,10 @@ class SkillFocusPage extends StatelessWidget {
   /// Sourced from _SessionScreenState._sessionRoles so only tonight's
   /// attendees appear.
   final Map<String, Role> sessionRoles;
+  // In-memory session exposure deltas: studentId -> moveId -> net delta.
+  final Map<String, Map<String, int>> sessionExposureDeltas;
+  // Called whenever exposure is adjusted here, so the grid badge stays live.
+  final void Function(String moveId, List<String> studentIds, int delta)? onExposureAdjusted;
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +63,12 @@ class SkillFocusPage extends StatelessWidget {
         children: [
           if (move.hasDescription)
             _DescriptionBanner(description: move.description!),
-          _ExposureBar(move: move, sessionRoles: sessionRoles, students: byId),
+          _ExposureBar(
+            move: move,
+            sessionRoles: sessionRoles,
+            students: byId,
+            onExposureAdjusted: onExposureAdjusted,
+          ),
           const Divider(height: 1),
           Expanded(
             child: entries.isEmpty
@@ -68,10 +79,12 @@ class SkillFocusPage extends StatelessWidget {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, i) {
                       final (student, role) = entries[i];
+                      final sessionDelta = sessionExposureDeltas[student.id]?[move.id] ?? 0;
                       return _AttendeeRow(
                         student: student,
                         role: role,
                         move: move,
+                        sessionDelta: sessionDelta,
                       );
                     },
                   ),
@@ -104,35 +117,39 @@ class _DescriptionBanner extends StatelessWidget {
   }
 }
 
-/// A compact bar showing the total exposure count across tonight's
-/// attendees (for quick reference) plus +/- buttons to adjust everyone's
-/// count at once, same as the session grid's exposure buttons.
+/// A compact bar with a single +/- pair that increments exposures for
+/// every session attendee at once, regardless of role. Since both leads
+/// and follows are taught the same move at the same time, one button
+/// covers everyone. Calls [onExposureAdjusted] to keep the grid badge live.
 class _ExposureBar extends StatelessWidget {
   const _ExposureBar({
     required this.move,
     required this.sessionRoles,
     required this.students,
+    required this.onExposureAdjusted,
   });
 
   final Move move;
   final Map<String, Role> sessionRoles;
   final Map<String, Student> students;
+  final void Function(String moveId, List<String> studentIds, int delta)? onExposureAdjusted;
+
+  void _adjust(BuildContext context, int delta) {
+    final appState = context.read<AppState>();
+    // Adjust per-role since AppState.adjustExposures is role-scoped.
+    final leadIds = sessionRoles.entries.where((e) => e.value == Role.lead).map((e) => e.key).toList();
+    final followIds = sessionRoles.entries.where((e) => e.value == Role.follow).map((e) => e.key).toList();
+    if (leadIds.isNotEmpty) appState.adjustExposures(move.id, Role.lead, leadIds, delta);
+    if (followIds.isNotEmpty) appState.adjustExposures(move.id, Role.follow, followIds, delta);
+    // Notify the session screen so grid badges update.
+    final allIds = sessionRoles.keys.toList();
+    onExposureAdjusted?.call(move.id, allIds, delta);
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final teal = isDark ? AppTheme.tealDark : AppTheme.teal;
-
-    // Group student ids by role for the bulk exposure buttons.
-    final leadIds = sessionRoles.entries
-        .where((e) => e.value == Role.lead)
-        .map((e) => e.key)
-        .toList();
-    final followIds = sessionRoles.entries
-        .where((e) => e.value == Role.follow)
-        .map((e) => e.key)
-        .toList();
-    final allIds = sessionRoles.keys.toList();
 
     return Container(
       color: isDark ? AppTheme.tealDark.withValues(alpha: 0.08) : AppTheme.teal.withValues(alpha: 0.04),
@@ -141,71 +158,24 @@ class _ExposureBar extends StatelessWidget {
         children: [
           Icon(Icons.repeat, size: 18, color: teal),
           const SizedBox(width: 8),
-          Text('Exposures tonight:', style: Theme.of(context).textTheme.bodyMedium),
+          Text('Exposures (all):', style: Theme.of(context).textTheme.bodyMedium),
           const Spacer(),
-          // Per-role bulk buttons when there are both leads and follows,
-          // otherwise a single pair covering everyone.
-          if (leadIds.isNotEmpty && followIds.isNotEmpty) ...[
-            _BulkExposureButtons(
-              label: 'L',
-              moveId: move.id,
-              role: Role.lead,
-              studentIds: leadIds,
-            ),
-            const SizedBox(width: 8),
-            _BulkExposureButtons(
-              label: 'F',
-              moveId: move.id,
-              role: Role.follow,
-              studentIds: followIds,
-            ),
-          ] else
-            _BulkExposureButtons(
-              label: 'All',
-              moveId: move.id,
-              role: sessionRoles.values.first,
-              studentIds: allIds,
-            ),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline, size: 22),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Undo exposure for everyone',
+            onPressed: () => _adjust(context, -1),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, size: 22),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Log exposure for everyone',
+            onPressed: () => _adjust(context, 1),
+          ),
         ],
       ),
-    );
-  }
-}
-
-class _BulkExposureButtons extends StatelessWidget {
-  const _BulkExposureButtons({
-    required this.label,
-    required this.moveId,
-    required this.role,
-    required this.studentIds,
-  });
-
-  final String label;
-  final String moveId;
-  final Role role;
-  final List<String> studentIds;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-        IconButton(
-          icon: const Icon(Icons.remove_circle_outline, size: 20),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          tooltip: 'Decrease exposure for $label',
-          onPressed: () => context.read<AppState>().adjustExposures(moveId, role, studentIds, -1),
-        ),
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline, size: 20),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          tooltip: 'Increase exposure for $label',
-          onPressed: () => context.read<AppState>().adjustExposures(moveId, role, studentIds, 1),
-        ),
-      ],
     );
   }
 }
@@ -217,11 +187,13 @@ class _AttendeeRow extends StatelessWidget {
     required this.student,
     required this.role,
     required this.move,
+    this.sessionDelta = 0,
   });
 
   final Student student;
   final Role role;
   final Move move;
+  final int sessionDelta;
 
   @override
   Widget build(BuildContext context) {
@@ -246,9 +218,32 @@ class _AttendeeRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                'exp: ${progress.exposures}×',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'exp: ${progress.exposures}×',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500),
+                  ),
+                  if (sessionDelta != 0) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: sessionDelta > 0 ? AppTheme.gold.withValues(alpha: 0.85) : Colors.red.shade400,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        sessionDelta > 0 ? '+$sessionDelta' : '$sessionDelta',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

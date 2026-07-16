@@ -10,11 +10,16 @@ import '../screens/skill_focus_page.dart';
 /// [sessionRoles] is the current session's attendee map (studentId → role).
 /// Pass an empty map when called outside a session context (e.g. catalog) —
 /// the Focus button will be hidden when there are no session attendees.
+///
+/// [sessionExposureDeltas] and [onExposureAdjusted] are the in-memory
+/// session exposure tracking state, threaded through to [SkillFocusPage].
 void showMovePopup(
   BuildContext context,
   Move move,
-  Map<String, Role> sessionRoles,
-) {
+  Map<String, Role> sessionRoles, {
+  Map<String, Map<String, int>> sessionExposureDeltas = const {},
+  void Function(String moveId, List<String> studentIds, int delta)? onExposureAdjusted,
+}) {
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -39,6 +44,8 @@ void showMovePopup(
                   builder: (_) => SkillFocusPage(
                     move: move,
                     sessionRoles: sessionRoles,
+                    sessionExposureDeltas: sessionExposureDeltas,
+                    onExposureAdjusted: onExposureAdjusted,
                   ),
                 ),
               );

@@ -29,6 +29,23 @@ class _SessionScreenState extends State<SessionScreen> {
   // id of the active sort from allSessionSorts
   String _activeSortId = defaultSessionSortId;
 
+  // In-memory session exposure deltas: studentId -> moveId -> net delta
+  // for this session. Persisted to disk via AppState but only tracked
+  // in memory here so it resets when the attendee picker resets.
+  final Map<String, Map<String, int>> _sessionExposureDeltas = {};
+
+  void _recordExposureDelta(String moveId, List<String> studentIds, int delta) {
+    setState(() {
+      for (final id in studentIds) {
+        _sessionExposureDeltas.putIfAbsent(id, () => {})[moveId] =
+            (_sessionExposureDeltas[id]?[moveId] ?? 0) + delta;
+      }
+    });
+  }
+
+  int _deltaFor(String studentId, String moveId) =>
+      _sessionExposureDeltas[studentId]?[moveId] ?? 0;
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -61,6 +78,8 @@ class _SessionScreenState extends State<SessionScreen> {
       }),
       activeSortId: _activeSortId,
       onSortChanged: (id) => setState(() => _activeSortId = id),
+      sessionExposureDeltas: _sessionExposureDeltas,
+      onExposureAdjusted: _recordExposureDelta,
     );
   }
 }
@@ -179,6 +198,8 @@ class _SessionGrid extends StatelessWidget {
     required this.onToggleFilter,
     required this.activeSortId,
     required this.onSortChanged,
+    required this.sessionExposureDeltas,
+    required this.onExposureAdjusted,
   });
 
   final Map<String, Role> sessionRoles;
@@ -187,6 +208,9 @@ class _SessionGrid extends StatelessWidget {
   final ValueChanged<String> onToggleFilter;
   final String activeSortId;
   final ValueChanged<String> onSortChanged;
+  // studentId -> moveId -> net exposure delta for this session
+  final Map<String, Map<String, int>> sessionExposureDeltas;
+  final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 
   @override
   Widget build(BuildContext context) {
@@ -249,12 +273,26 @@ class _SessionGrid extends StatelessWidget {
                   if (leadMoves.isEmpty)
                     const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _GridSection(moves: leadMoves, attendees: leads, role: Role.lead, sessionRoles: sessionRoles),
+                    _GridSection(
+                      moves: leadMoves,
+                      attendees: leads,
+                      role: Role.lead,
+                      sessionRoles: sessionRoles,
+                      sessionExposureDeltas: sessionExposureDeltas,
+                      onExposureAdjusted: onExposureAdjusted,
+                    ),
                 if (follows.isNotEmpty)
                   if (followMoves.isEmpty)
                     const SliverToBoxAdapter(child: _AllFilteredNotice())
                   else
-                    _GridSection(moves: followMoves, attendees: follows, role: Role.follow, sessionRoles: sessionRoles),
+                    _GridSection(
+                      moves: followMoves,
+                      attendees: follows,
+                      role: Role.follow,
+                      sessionRoles: sessionRoles,
+                      sessionExposureDeltas: sessionExposureDeltas,
+                      onExposureAdjusted: onExposureAdjusted,
+                    ),
                 // Bottom padding so the last row isn't flush against the
                 // floating action button.
                 const SliverToBoxAdapter(child: SizedBox(height: 88)),
@@ -379,12 +417,21 @@ void _showSortFilterSheet(
 /// section's header pinning in turn as it scrolls to the top, then getting
 /// pushed off by the next section's header (via SliverMainAxisGroup).
 class _GridSection extends StatefulWidget {
-  const _GridSection({required this.moves, required this.attendees, required this.role, required this.sessionRoles});
+  const _GridSection({
+    required this.moves,
+    required this.attendees,
+    required this.role,
+    required this.sessionRoles,
+    required this.sessionExposureDeltas,
+    required this.onExposureAdjusted,
+  });
 
   final List<Move> moves;
   final List<Student> attendees;
   final Role role;
   final Map<String, Role> sessionRoles;
+  final Map<String, Map<String, int>> sessionExposureDeltas;
+  final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 
   @override
   State<_GridSection> createState() => _GridSectionState();
@@ -449,6 +496,8 @@ class _GridSectionState extends State<_GridSection> {
                 cellWidth: _cellWidth,
                 rowHeight: _rowHeight,
                 sessionRoles: widget.sessionRoles,
+                sessionExposureDeltas: widget.sessionExposureDeltas,
+                onExposureAdjusted: widget.onExposureAdjusted,
               );
             },
             childCount: moves.length,
@@ -475,6 +524,8 @@ class _MoveRow extends StatefulWidget {
     required this.cellWidth,
     required this.rowHeight,
     required this.sessionRoles,
+    required this.sessionExposureDeltas,
+    required this.onExposureAdjusted,
   });
 
   final Move move;
@@ -485,6 +536,8 @@ class _MoveRow extends StatefulWidget {
   final double cellWidth;
   final double rowHeight;
   final Map<String, Role> sessionRoles;
+  final Map<String, Map<String, int>> sessionExposureDeltas;
+  final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 
   @override
   State<_MoveRow> createState() => _MoveRowState();
@@ -523,6 +576,8 @@ class _MoveRowState extends State<_MoveRow> {
               height: widget.rowHeight,
               width: widget.nameColWidth,
               sessionRoles: widget.sessionRoles,
+              sessionExposureDeltas: widget.sessionExposureDeltas,
+              onExposureAdjusted: widget.onExposureAdjusted,
             ),
             Expanded(
               child: SingleChildScrollView(
@@ -532,6 +587,7 @@ class _MoveRowState extends State<_MoveRow> {
                 child: Row(
                   children: attendees.map((student) {
                     final progress = student.progressFor(move.id, role);
+                    final sessionDelta = widget.sessionExposureDeltas[student.id]?[move.id] ?? 0;
                     return SizedBox(
                       width: widget.cellWidth,
                       height: widget.rowHeight,
@@ -539,6 +595,7 @@ class _MoveRowState extends State<_MoveRow> {
                         padding: const EdgeInsets.all(4),
                         child: _Cell(
                           progress: progress,
+                          sessionDelta: sessionDelta,
                           onTap: () => _showLevelPicker(
                             context,
                             student,
@@ -666,6 +723,8 @@ class _MoveNameCell extends StatelessWidget {
     required this.height,
     required this.width,
     required this.sessionRoles,
+    required this.sessionExposureDeltas,
+    required this.onExposureAdjusted,
   });
 
   final Move move;
@@ -674,6 +733,14 @@ class _MoveNameCell extends StatelessWidget {
   final double height;
   final double width;
   final Map<String, Role> sessionRoles;
+  final Map<String, Map<String, int>> sessionExposureDeltas;
+  final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
+
+  void _adjust(BuildContext context, int delta) {
+    final ids = attendees.map((s) => s.id).toList();
+    context.read<AppState>().adjustExposures(move.id, role, ids, delta);
+    onExposureAdjusted(move.id, ids, delta);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -686,7 +753,13 @@ class _MoveNameCell extends StatelessWidget {
           children: [
             Expanded(
               child: InkWell(
-                onTap: () => showMovePopup(context, move, sessionRoles),
+                onTap: () => showMovePopup(
+                  context,
+                  move,
+                  sessionRoles,
+                  sessionExposureDeltas: sessionExposureDeltas,
+                  onExposureAdjusted: onExposureAdjusted,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -711,24 +784,14 @@ class _MoveNameCell extends StatelessWidget {
               tooltip: 'Undo exposure for everyone shown',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: () => context.read<AppState>().adjustExposures(
-                    move.id,
-                    role,
-                    attendees.map((s) => s.id).toList(),
-                    -1,
-                  ),
+              onPressed: () => _adjust(context, -1),
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline, size: 18),
               tooltip: 'Log exposure for everyone shown',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: () => context.read<AppState>().adjustExposures(
-                    move.id,
-                    role,
-                    attendees.map((s) => s.id).toList(),
-                    1,
-                  ),
+              onPressed: () => _adjust(context, 1),
             ),
           ],
         ),
@@ -738,10 +801,11 @@ class _MoveNameCell extends StatelessWidget {
 }
 
 class _Cell extends StatelessWidget {
-  const _Cell({required this.progress, required this.onTap});
+  const _Cell({required this.progress, required this.onTap, this.sessionDelta = 0});
 
   final MoveProgress progress;
   final VoidCallback onTap;
+  final int sessionDelta;
 
   @override
   Widget build(BuildContext context) {
@@ -756,35 +820,55 @@ class _Cell extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cellColor,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              level.shortLabel,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: cellColor,
+              borderRadius: BorderRadius.circular(8),
             ),
-            if (progress.exposures > 0)
-              Text(
-                '${progress.exposures}×',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: level.index >= 3
-                      ? textColor.withValues(alpha: 0.75)
-                      : (isDark ? AppTheme.onSurfaceDark.withValues(alpha: 0.6) : Colors.grey.shade600),
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  level.shortLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+                if (progress.exposures > 0)
+                  Text(
+                    '${progress.exposures}×',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: level.index >= 3
+                          ? textColor.withValues(alpha: 0.75)
+                          : (isDark ? AppTheme.onSurfaceDark.withValues(alpha: 0.6) : Colors.grey.shade600),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (sessionDelta != 0)
+            Positioned(
+              top: 2,
+              right: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                decoration: BoxDecoration(
+                  color: sessionDelta > 0 ? AppTheme.gold : Colors.red.shade400,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  sessionDelta > 0 ? '+$sessionDelta' : '$sessionDelta',
+                  style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
