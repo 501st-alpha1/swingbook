@@ -79,12 +79,15 @@ class AppState extends ChangeNotifier {
 
   /// Adjust exposure count for a move+role across a set of students by [delta]
   /// (positive or negative). Exposures are clamped at a minimum of 0.
+  /// On increment, auto-stamps today's date as [lastExposure].
+  /// On decrement to zero, clears [lastExposure].
   Future<void> adjustExposures(
     String moveId,
     Role role,
     List<String> studentIds,
     int delta,
   ) async {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
     final updated = <Student>[];
     for (final student in _students) {
       if (!studentIds.contains(student.id)) continue;
@@ -94,7 +97,11 @@ class AppState extends ChangeNotifier {
       final roleMap = movesMap[moveId] ?? {};
       final current = roleMap[role] ?? const MoveProgress();
       final newExposures = (current.exposures + delta).clamp(0, 1 << 30);
-      roleMap[role] = current.copyWith(exposures: newExposures);
+      roleMap[role] = current.copyWith(
+        exposures: newExposures,
+        lastExposure: newExposures > 0 && delta > 0 ? today : null,
+        clearLastExposure: newExposures == 0,
+      );
       movesMap[moveId] = roleMap;
       updated.add(student.copyWith(moves: movesMap));
     }

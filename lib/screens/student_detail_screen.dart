@@ -10,9 +10,17 @@ import '../utils/move_sort.dart';
 import '../widgets/move_description_dialog.dart';
 
 class StudentDetailScreen extends StatefulWidget {
-  const StudentDetailScreen({super.key, required this.studentId});
+  const StudentDetailScreen({
+    super.key,
+    required this.studentId,
+    this.sessionExposureDeltas = const {},
+  });
 
   final String studentId;
+  /// In-memory session exposure deltas for the current session, if any.
+  /// Keyed studentId -> moveId -> net delta. Defaults to empty when
+  /// accessed outside a session (e.g. from the Students tab).
+  final Map<String, Map<String, int>> sessionExposureDeltas;
 
   @override
   State<StudentDetailScreen> createState() => _StudentDetailScreenState();
@@ -57,7 +65,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: _MovesList(student: student, visibleRoles: visibleRoles),
+            child: _MovesList(student: student, visibleRoles: visibleRoles, sessionExposureDeltas: widget.sessionExposureDeltas),
           ),
         ],
       ),
@@ -178,10 +186,11 @@ class _RoleFilterBar extends StatelessWidget {
 }
 
 class _MovesList extends StatelessWidget {
-  const _MovesList({required this.student, required this.visibleRoles});
+  const _MovesList({required this.student, required this.visibleRoles, required this.sessionExposureDeltas});
 
   final Student student;
   final List<Role> visibleRoles;
+  final Map<String, Map<String, int>> sessionExposureDeltas;
 
   @override
   Widget build(BuildContext context) {
@@ -197,18 +206,29 @@ class _MovesList extends StatelessWidget {
       itemCount: moves.length,
       itemBuilder: (context, i) {
         final move = moves[i];
-        return _MoveRow(student: student, move: move, roles: visibleRoles);
+        return _MoveRow(
+          student: student,
+          move: move,
+          roles: visibleRoles,
+          sessionExposureDeltas: sessionExposureDeltas,
+        );
       },
     );
   }
 }
 
 class _MoveRow extends StatelessWidget {
-  const _MoveRow({required this.student, required this.move, required this.roles});
+  const _MoveRow({
+    required this.student,
+    required this.move,
+    required this.roles,
+    required this.sessionExposureDeltas,
+  });
 
   final Student student;
   final Move move;
   final List<Role> roles;
+  final Map<String, Map<String, int>> sessionExposureDeltas;
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +240,7 @@ class _MoveRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onTap: move.hasDescription ? () => showMovePopup(context, move, const {}) : null,
+              onTap: () => showMovePopup(context, move, const {}),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -245,19 +265,20 @@ class _MoveRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (move.hasDescription)
-                    Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
+                  Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
                 ],
               ),
             ),
             const SizedBox(height: 8),
             ...roles.map((role) {
               final progress = student.progressFor(move.id, role);
+              final sessionDelta = sessionExposureDeltas[student.id]?[move.id] ?? 0;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Role label + level selector
                     Row(
                       children: [
                         SizedBox(
@@ -275,22 +296,36 @@ class _MoveRow extends StatelessWidget {
                                 .setLevel(student.id, move.id, role, level),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        _ExposureStepper(
-                          exposures: progress.exposures,
-                          onAdjust: (delta) => context
-                              .read<AppState>()
-                              .adjustExposureForStudent(student.id, move.id, role, delta),
-                        ),
                       ],
                     ),
+                    const SizedBox(height: 4),
+                    // Exposure row — labeled, dated, with session delta
+                    Padding(
+                      padding: const EdgeInsets.only(left: 56),
+                      child: _CounterRow(
+                        label: 'Taught',
+                        count: progress.exposures,
+                        lastDate: progress.lastExposure,
+                        nullDateLabel: 'unknown',
+                        sessionDelta: sessionDelta,
+                        onAdjust: (delta) => context
+                            .read<AppState>()
+                            .adjustExposureForStudent(student.id, move.id, role, delta),
+                        canDecrement: progress.exposures > 0,
+                      ),
+                    ),
+                    // Practice row — labeled, dated
                     Padding(
                       padding: const EdgeInsets.only(left: 56, top: 2),
-                      child: _PracticeRow(
-                        progress: progress,
+                      child: _CounterRow(
+                        label: 'Practiced',
+                        count: progress.practiceCount,
+                        lastDate: progress.lastPracticed,
+                        nullDateLabel: null, // no date yet is normal, don't say "unknown"
                         onAdjust: (delta) => context
                             .read<AppState>()
                             .adjustPracticeCount(student.id, move.id, role, delta),
+                        canDecrement: progress.practiceCount > 0,
                       ),
                     ),
                   ],
@@ -305,33 +340,75 @@ class _MoveRow extends StatelessWidget {
 }
 
 /// Compact -/count/+ control for adjusting exposure count by 1.
-class _ExposureStepper extends StatelessWidget {
-  const _ExposureStepper({required this.exposures, required this.onAdjust});
+/// A labeled counter row showing count, optional date, an optional session
+/// delta badge, and +/- stepper buttons. Used for both "Taught" (exposure)
+/// and "Practiced" rows under each move.
+class _CounterRow extends StatelessWidget {
+  const _CounterRow({
+    required this.label,
+    required this.count,
+    required this.lastDate,
+    required this.onAdjust,
+    required this.canDecrement,
+    this.nullDateLabel,
+    this.sessionDelta = 0,
+  });
 
-  final int exposures;
+  final String label;
+  final int count;
+  // ISO-8601 date string, or null if never.
+  final String? lastDate;
+  // What to show when lastDate is null and count > 0. If null, shows nothing.
+  final String? nullDateLabel;
   final ValueChanged<int> onAdjust;
+  final bool canDecrement;
+  final int sessionDelta;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final teal = isDark ? AppTheme.tealDark : AppTheme.teal;
+    final formattedDate = lastDate != null ? formatShortDate(lastDate!) : null;
+    final dateText = formattedDate ?? (count > 0 ? nullDateLabel : null);
+
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
+        Text(
+          '$label: ${count}×',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: teal),
+        ),
+        if (sessionDelta != 0) ...[
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: sessionDelta > 0 ? AppTheme.gold.withValues(alpha: 0.85) : Colors.red.shade400,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              sessionDelta > 0 ? '+$sessionDelta' : '$sessionDelta',
+              style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+        if (dateText != null) ...[
+          Text(
+            '  ·  $dateText',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+        ],
+        const Spacer(),
         _StepperButton(
           icon: Icons.remove,
-          tooltip: 'Decrease exposures',
-          onPressed: exposures > 0 ? () => onAdjust(-1) : null,
-        ),
-        SizedBox(
-          width: 28,
-          child: Text(
-            '${exposures}×',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-          ),
+          tooltip: 'Decrease $label',
+          onPressed: canDecrement ? () => onAdjust(-1) : null,
         ),
         _StepperButton(
           icon: Icons.add,
-          tooltip: 'Increase exposures',
+          tooltip: 'Increase $label',
           onPressed: () => onAdjust(1),
         ),
       ],
@@ -409,53 +486,6 @@ class _LevelSelector extends StatelessWidget {
 }
 
 /// Compact inline row showing practice count + last date + +/- controls.
-class _PracticeRow extends StatelessWidget {
-  const _PracticeRow({required this.progress, required this.onAdjust});
-
-  final MoveProgress progress;
-  final ValueChanged<int> onAdjust;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final teal = isDark ? AppTheme.tealDark : AppTheme.teal;
-    final lastDate = progress.lastPracticed != null
-        ? formatShortDate(progress.lastPracticed!)
-        : null;
-
-    return Row(
-      children: [
-        Icon(Icons.fitness_center, size: 12, color: teal),
-        const SizedBox(width: 4),
-        Text(
-          '${progress.practiceCount}×',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: teal),
-        ),
-        if (lastDate != null) ...[
-          Text(
-            '  ·  $lastDate',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade500,
-                  fontStyle: FontStyle.italic,
-                ),
-          ),
-        ],
-        const Spacer(),
-        _StepperButton(
-          icon: Icons.remove,
-          tooltip: 'Decrease practice count',
-          onPressed: progress.practiceCount > 0 ? () => onAdjust(-1) : null,
-        ),
-        _StepperButton(
-          icon: Icons.add,
-          tooltip: 'Log practice session',
-          onPressed: () => onAdjust(1),
-        ),
-      ],
-    );
-  }
-}
-
 void _showEditStudent(BuildContext context, Student student) {
   final nameController = TextEditingController(text: student.name);
   final roles = Set<Role>.from(student.roles);

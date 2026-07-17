@@ -29,6 +29,11 @@ enum ProficiencyLevel {
 class MoveProgress {
   final ProficiencyLevel level;
   final int exposures;
+
+  /// ISO-8601 date string (yyyy-MM-dd) of the last time this move was taught,
+  /// or null for entries that pre-date this field (displayed as "unknown").
+  final String? lastExposure;
+
   final int practiceCount;
 
   /// ISO-8601 date string (yyyy-MM-dd) of the last time practice was logged,
@@ -38,6 +43,7 @@ class MoveProgress {
   const MoveProgress({
     this.level = ProficiencyLevel.notTried,
     this.exposures = 0,
+    this.lastExposure,
     this.practiceCount = 0,
     this.lastPracticed,
   });
@@ -45,6 +51,7 @@ class MoveProgress {
   factory MoveProgress.fromJson(Map<String, dynamic> json) => MoveProgress(
         level: ProficiencyLevel.values[json['level'] as int? ?? 0],
         exposures: json['exposures'] as int? ?? 0,
+        lastExposure: json['lastExposure'] as String?,
         practiceCount: json['practiceCount'] as int? ?? 0,
         lastPracticed: json['lastPracticed'] as String?,
       );
@@ -52,6 +59,7 @@ class MoveProgress {
   Map<String, dynamic> toJson() => {
         'level': level.index,
         'exposures': exposures,
+        if (lastExposure != null) 'lastExposure': lastExposure,
         if (practiceCount > 0) 'practiceCount': practiceCount,
         if (lastPracticed != null) 'lastPracticed': lastPracticed,
       };
@@ -59,13 +67,16 @@ class MoveProgress {
   MoveProgress copyWith({
     ProficiencyLevel? level,
     int? exposures,
+    String? lastExposure,
     int? practiceCount,
     String? lastPracticed,
     bool clearLastPracticed = false,
+    bool clearLastExposure = false,
   }) =>
       MoveProgress(
         level: level ?? this.level,
         exposures: exposures ?? this.exposures,
+        lastExposure: clearLastExposure ? null : (lastExposure ?? this.lastExposure),
         practiceCount: practiceCount ?? this.practiceCount,
         lastPracticed: clearLastPracticed ? null : (lastPracticed ?? this.lastPracticed),
       );
