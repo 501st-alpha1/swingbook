@@ -6,22 +6,67 @@ import '../providers/app_state.dart';
 import '../theme.dart';
 import 'student_detail_screen.dart';
 
-class StudentsScreen extends StatelessWidget {
+class StudentsScreen extends StatefulWidget {
   const StudentsScreen({super.key});
+
+  @override
+  State<StudentsScreen> createState() => _StudentsScreenState();
+}
+
+class _StudentsScreenState extends State<StudentsScreen> {
+  bool _showArchived = false;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final students = appState.students;
+    final active = appState.students.where((s) => !s.isArchived).toList();
+    final archived = appState.students.where((s) => s.isArchived).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Students')),
-      body: students.isEmpty
+      body: active.isEmpty && archived.isEmpty
           ? const _EmptyStudents()
-          : ListView.builder(
+          : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: students.length,
-              itemBuilder: (context, i) => _StudentTile(student: students[i]),
+              children: [
+                if (active.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Text(
+                      'No active students.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade500),
+                    ),
+                  )
+                else
+                  ...active.map((s) => _StudentTile(student: s)),
+                if (archived.isNotEmpty) ...[
+                  InkWell(
+                    onTap: () => setState(() => _showArchived = !_showArchived),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _showArchived ? Icons.expand_less : Icons.expand_more,
+                            size: 18,
+                            color: Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Archived (${archived.length})',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_showArchived)
+                    ...archived.map((s) => _StudentTile(student: s, isArchived: true)),
+                ],
+              ],
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddStudent(context),
@@ -59,9 +104,10 @@ class _EmptyStudents extends StatelessWidget {
 }
 
 class _StudentTile extends StatelessWidget {
-  const _StudentTile({required this.student});
+  const _StudentTile({required this.student, this.isArchived = false});
 
   final Student student;
+  final bool isArchived;
 
   @override
   Widget build(BuildContext context) {
@@ -71,15 +117,42 @@ class _StudentTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: isArchived
+          ? (isDark ? Colors.grey.shade900 : Colors.grey.shade100)
+          : null,
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: avatarColor.withValues(alpha: isDark ? 0.25 : 0.15),
-          foregroundColor: avatarColor,
+          backgroundColor: avatarColor.withValues(alpha: isArchived ? 0.08 : (isDark ? 0.25 : 0.15)),
+          foregroundColor: isArchived ? Colors.grey.shade500 : avatarColor,
           child: Text(student.name.isNotEmpty ? student.name[0].toUpperCase() : '?'),
         ),
-        title: Text(student.name),
-        subtitle: Text(roleLabel.isEmpty ? 'No role set' : roleLabel),
-        trailing: const Icon(Icons.chevron_right),
+        title: Text(
+          student.name,
+          style: isArchived
+              ? TextStyle(color: Colors.grey.shade500)
+              : null,
+        ),
+        subtitle: Text(
+          roleLabel.isEmpty ? 'No role set' : roleLabel,
+          style: isArchived ? TextStyle(color: Colors.grey.shade400) : null,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                size: 20,
+                color: Colors.grey.shade500,
+              ),
+              tooltip: isArchived ? 'Unarchive' : 'Archive',
+              onPressed: () => context
+                  .read<AppState>()
+                  .setStudentArchived(student.id, archived: !isArchived),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => StudentDetailScreen(studentId: student.id)),

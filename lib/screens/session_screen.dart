@@ -52,7 +52,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
     if (_pickingAttendees) {
       return _AttendeePicker(
-        students: appState.students,
+        students: appState.students.where((s) => !s.isArchived).toList(),
         sessionRoles: _sessionRoles,
         onSetRole: (id, role) => setState(() {
           if (role == null) {
@@ -409,6 +409,7 @@ void _showSortFilterSheet(
     ),
   );
 }
+
 
 /// One sticky section of the session grid: a pinned attendee-name header
 /// row (with the role label in its corner cell) followed by a list of move

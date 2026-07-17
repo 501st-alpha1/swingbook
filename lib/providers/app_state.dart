@@ -73,6 +73,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Archives or unarchives a student. Archived students are hidden from
+  /// the active list and session attendee picker but retain all their data.
+  Future<void> setStudentArchived(String studentId, {required bool archived}) async {
+    final student = _students.firstWhere((s) => s.id == studentId);
+    await updateStudent(student.copyWith(isArchived: archived));
+  }
+
   // ---------------------------------------------------------------------------
   // Progress mutations (used from session screen)
   // ---------------------------------------------------------------------------

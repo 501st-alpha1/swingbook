@@ -95,12 +95,18 @@ class Student {
   /// moveId -> role -> progress
   final Map<String, Map<Role, MoveProgress>> moves;
 
+  /// When true, the student is hidden from the active list and session
+  /// attendee picker. They remain in the data so progress is preserved
+  /// and they can be unarchived if they return.
+  final bool isArchived;
+
   const Student({
     required this.id,
     required this.name,
     required this.roles,
     required this.bpm,
     required this.moves,
+    this.isArchived = false,
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
@@ -132,6 +138,7 @@ class Student {
       roles: roles,
       bpm: bpm,
       moves: moves,
+      isArchived: json['isArchived'] as bool? ?? false,
     );
   }
 
@@ -147,6 +154,7 @@ class Student {
                 roleEntry.key.name: roleEntry.value.toJson(),
             },
         },
+        if (isArchived) 'isArchived': true,
       };
 
   Student copyWith({
@@ -155,6 +163,7 @@ class Student {
     Set<Role>? roles,
     Map<Role, int>? bpm,
     Map<String, Map<Role, MoveProgress>>? moves,
+    bool? isArchived,
   }) =>
       Student(
         id: id ?? this.id,
@@ -162,6 +171,7 @@ class Student {
         roles: roles ?? this.roles,
         bpm: bpm ?? this.bpm,
         moves: moves ?? this.moves,
+        isArchived: isArchived ?? this.isArchived,
       );
 
   MoveProgress progressFor(String moveId, Role role) =>
