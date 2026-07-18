@@ -77,7 +77,7 @@ class _MoveTile extends StatelessWidget {
       child: ListTile(
         title: Text(move.name),
         subtitle: Text('${_typeLabel(move.type)} · ${_difficultyLabel(move.difficulty)}'),
-        onTap: move.hasDescription ? () => showMovePopup(context, move, const {}) : null,
+        onTap: move.hasDescription ? () => showMovePopup(context, move, const <String, Set<Role>>{}) : null,
         leading: move.hasDescription
             ? Icon(Icons.notes, size: 20, color: Colors.grey.shade500)
             : null,

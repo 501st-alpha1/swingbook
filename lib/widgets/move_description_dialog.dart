@@ -16,7 +16,7 @@ import '../screens/skill_focus_page.dart';
 void showMovePopup(
   BuildContext context,
   Move move,
-  Map<String, Role> sessionRoles, {
+  Map<String, Set<Role>> sessionRoles, {
   Map<String, Map<String, int>> sessionExposureDeltas = const {},
   void Function(String moveId, List<String> studentIds, int delta)? onExposureAdjusted,
 }) {

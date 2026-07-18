@@ -19,8 +19,8 @@ class SessionScreen extends StatefulWidget {
 }
 
 class _SessionScreenState extends State<SessionScreen> {
-  // studentId -> the role they're playing for this session
-  final Map<String, Role> _sessionRoles = {};
+  // studentId -> set of roles they're playing for this session
+  final Map<String, Set<Role>> _sessionRoles = {};
   bool _pickingAttendees = true;
 
   // ids of currently-enabled filters from allMoveFilters
@@ -43,8 +43,7 @@ class _SessionScreenState extends State<SessionScreen> {
     });
   }
 
-  int _deltaFor(String studentId, String moveId) =>
-      _sessionExposureDeltas[studentId]?[moveId] ?? 0;
+  bool get _hasAttendees => _sessionRoles.values.any((roles) => roles.isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -54,14 +53,16 @@ class _SessionScreenState extends State<SessionScreen> {
       return _AttendeePicker(
         students: appState.students.where((s) => !s.isArchived).toList(),
         sessionRoles: _sessionRoles,
-        onSetRole: (id, role) => setState(() {
-          if (role == null) {
-            _sessionRoles.remove(id);
+        onToggleRole: (id, role) => setState(() {
+          final roles = _sessionRoles.putIfAbsent(id, () => {});
+          if (roles.contains(role)) {
+            roles.remove(role);
+            if (roles.isEmpty) _sessionRoles.remove(id);
           } else {
-            _sessionRoles[id] = role;
+            roles.add(role);
           }
         }),
-        onStart: _sessionRoles.isEmpty ? null : () => setState(() => _pickingAttendees = false),
+        onStart: _hasAttendees ? () => setState(() => _pickingAttendees = false) : null,
       );
     }
 
@@ -88,13 +89,13 @@ class _AttendeePicker extends StatelessWidget {
   const _AttendeePicker({
     required this.students,
     required this.sessionRoles,
-    required this.onSetRole,
+    required this.onToggleRole,
     required this.onStart,
   });
 
   final List<Student> students;
-  final Map<String, Role> sessionRoles;
-  final void Function(String studentId, Role? role) onSetRole;
+  final Map<String, Set<Role>> sessionRoles;
+  final void Function(String studentId, Role role) onToggleRole;
   final VoidCallback? onStart;
 
   @override
@@ -119,18 +120,18 @@ class _AttendeePicker extends StatelessWidget {
               itemCount: sorted.length,
               itemBuilder: (context, i) {
                 final student = sorted[i];
-                final assignedRole = sessionRoles[student.id];
+                final assignedRoles = sessionRoles[student.id] ?? {};
                 final isDark = Theme.of(context).brightness == Brightness.dark;
                 final highlightColor = isDark ? AppTheme.goldDark : AppTheme.gold;
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  color: assignedRole != null ? highlightColor.withValues(alpha: isDark ? 0.2 : 0.15) : null,
+                  color: assignedRoles.isNotEmpty ? highlightColor.withValues(alpha: isDark ? 0.2 : 0.15) : null,
                   child: ListTile(
                     title: Text(student.name),
                     trailing: _RoleToggle(
                       student: student,
-                      assignedRole: assignedRole,
-                      onSetRole: (role) => onSetRole(student.id, role),
+                      assignedRoles: assignedRoles,
+                      onToggleRole: (role) => onToggleRole(student.id, role),
                     ),
                   ),
                 );
@@ -152,18 +153,18 @@ class _AttendeePicker extends StatelessWidget {
   }
 }
 
-/// Lets you pick the session role for a student. If the student only has
-/// one role on their profile, only that option is offered.
+/// Role chips for one student in the attendee picker. Each chip toggles
+/// independently so a student can be marked as Lead, Follow, or both.
 class _RoleToggle extends StatelessWidget {
   const _RoleToggle({
     required this.student,
-    required this.assignedRole,
-    required this.onSetRole,
+    required this.assignedRoles,
+    required this.onToggleRole,
   });
 
   final Student student;
-  final Role? assignedRole;
-  final ValueChanged<Role?> onSetRole;
+  final Set<Role> assignedRoles;
+  final ValueChanged<Role> onToggleRole;
 
   @override
   Widget build(BuildContext context) {
@@ -179,11 +180,11 @@ class _RoleToggle extends StatelessWidget {
     return Wrap(
       spacing: 6,
       children: availableRoles.map((role) {
-        final isSelected = assignedRole == role;
-        return ChoiceChip(
+        final isSelected = assignedRoles.contains(role);
+        return FilterChip(
           label: Text(role == Role.lead ? 'Lead' : 'Follow'),
           selected: isSelected,
-          onSelected: (sel) => onSetRole(sel ? role : null),
+          onSelected: (_) => onToggleRole(role),
         );
       }).toList(),
     );
@@ -202,7 +203,7 @@ class _SessionGrid extends StatelessWidget {
     required this.onExposureAdjusted,
   });
 
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   final VoidCallback onEditAttendees;
   final Set<String> activeFilterIds;
   final ValueChanged<String> onToggleFilter;
@@ -225,11 +226,8 @@ class _SessionGrid extends StatelessWidget {
     for (final entry in sessionRoles.entries) {
       final student = byId[entry.key];
       if (student == null) continue;
-      if (entry.value == Role.lead) {
-        leads.add(student);
-      } else {
-        follows.add(student);
-      }
+      if (entry.value.contains(Role.lead)) leads.add(student);
+      if (entry.value.contains(Role.follow)) follows.add(student);
     }
     leads.sort((a, b) => a.name.compareTo(b.name));
     follows.sort((a, b) => a.name.compareTo(b.name));
@@ -430,7 +428,7 @@ class _GridSection extends StatefulWidget {
   final List<Move> moves;
   final List<Student> attendees;
   final Role role;
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 
@@ -536,7 +534,7 @@ class _MoveRow extends StatefulWidget {
   final double nameColWidth;
   final double cellWidth;
   final double rowHeight;
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 
@@ -733,7 +731,7 @@ class _MoveNameCell extends StatelessWidget {
   final List<Student> attendees;
   final double height;
   final double width;
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
 

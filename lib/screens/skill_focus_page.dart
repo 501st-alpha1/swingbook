@@ -24,11 +24,7 @@ class SkillFocusPage extends StatelessWidget {
   });
 
   final Move move;
-
-  /// The session attendee map: studentId → role they're dancing tonight.
-  /// Sourced from _SessionScreenState._sessionRoles so only tonight's
-  /// attendees appear.
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   // In-memory session exposure deltas: studentId -> moveId -> net delta.
   final Map<String, Map<String, int>> sessionExposureDeltas;
   // Called whenever exposure is adjusted here, so the grid badge stays live.
@@ -45,7 +41,9 @@ class SkillFocusPage extends StatelessWidget {
     for (final entry in sessionRoles.entries) {
       final student = byId[entry.key];
       if (student == null) continue;
-      entries.add((student, entry.value));
+      for (final role in entry.value) {
+        entries.add((student, role));
+      }
     }
     entries.sort((a, b) {
       final byRole = a.$2.name.compareTo(b.$2.name); // lead before follow
@@ -130,15 +128,15 @@ class _ExposureBar extends StatelessWidget {
   });
 
   final Move move;
-  final Map<String, Role> sessionRoles;
+  final Map<String, Set<Role>> sessionRoles;
   final Map<String, Student> students;
   final void Function(String moveId, List<String> studentIds, int delta)? onExposureAdjusted;
 
   void _adjust(BuildContext context, int delta) {
     final appState = context.read<AppState>();
     // Adjust per-role since AppState.adjustExposures is role-scoped.
-    final leadIds = sessionRoles.entries.where((e) => e.value == Role.lead).map((e) => e.key).toList();
-    final followIds = sessionRoles.entries.where((e) => e.value == Role.follow).map((e) => e.key).toList();
+    final leadIds = sessionRoles.entries.where((e) => e.value.contains(Role.lead)).map((e) => e.key).toList();
+    final followIds = sessionRoles.entries.where((e) => e.value.contains(Role.follow)).map((e) => e.key).toList();
     if (leadIds.isNotEmpty) appState.adjustExposures(move.id, Role.lead, leadIds, delta);
     if (followIds.isNotEmpty) appState.adjustExposures(move.id, Role.follow, followIds, delta);
     // Notify the session screen so grid badges update.
