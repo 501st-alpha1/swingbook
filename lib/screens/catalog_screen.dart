@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/move.dart';
+import '../models/student.dart';
 import '../providers/app_state.dart';
 import '../utils/short_name_suggester.dart';
 import '../widgets/move_description_dialog.dart';
