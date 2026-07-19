@@ -34,11 +34,27 @@ class _SessionScreenState extends State<SessionScreen> {
   // in memory here so it resets when the attendee picker resets.
   final Map<String, Map<String, int>> _sessionExposureDeltas = {};
 
+  // In-memory teach queue: move ids queued for this session
+  final Set<String> _queuedMoveIds = {};
+  bool _queueFilterActive = false;
+
   void _recordExposureDelta(String moveId, List<String> studentIds, int delta) {
     setState(() {
       for (final id in studentIds) {
         _sessionExposureDeltas.putIfAbsent(id, () => {})[moveId] =
             (_sessionExposureDeltas[id]?[moveId] ?? 0) + delta;
+      }
+    });
+  }
+
+  void _toggleQueue(String moveId) {
+    setState(() {
+      if (_queuedMoveIds.contains(moveId)) {
+        _queuedMoveIds.remove(moveId);
+        // Auto-disable the queue filter when the last move is dequeued
+        if (_queuedMoveIds.isEmpty) _queueFilterActive = false;
+      } else {
+        _queuedMoveIds.add(moveId);
       }
     });
   }
@@ -81,6 +97,10 @@ class _SessionScreenState extends State<SessionScreen> {
       onSortChanged: (id) => setState(() => _activeSortId = id),
       sessionExposureDeltas: _sessionExposureDeltas,
       onExposureAdjusted: _recordExposureDelta,
+      queuedMoveIds: _queuedMoveIds,
+      queueFilterActive: _queueFilterActive,
+      onToggleQueue: _toggleQueue,
+      onToggleQueueFilter: (active) => setState(() => _queueFilterActive = active),
     );
   }
 }
@@ -201,6 +221,10 @@ class _SessionGrid extends StatelessWidget {
     required this.onSortChanged,
     required this.sessionExposureDeltas,
     required this.onExposureAdjusted,
+    required this.queuedMoveIds,
+    required this.queueFilterActive,
+    required this.onToggleQueue,
+    required this.onToggleQueueFilter,
   });
 
   final Map<String, Set<Role>> sessionRoles;
@@ -212,11 +236,21 @@ class _SessionGrid extends StatelessWidget {
   // studentId -> moveId -> net exposure delta for this session
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
+  final Set<String> queuedMoveIds;
+  final bool queueFilterActive;
+  final ValueChanged<String> onToggleQueue;
+  final ValueChanged<bool> onToggleQueueFilter;
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final moves = sortedMoves(appState.catalog);
+    var moves = sortedMoves(appState.catalog);
+
+    // Apply queue filter first (before per-attendee filters) since it
+    // doesn't depend on attendees.
+    if (queueFilterActive && queuedMoveIds.isNotEmpty) {
+      moves = moves.where((m) => queuedMoveIds.contains(m.id)).toList();
+    }
 
     // Pull latest student records (in case of edits elsewhere) and pair each
     // with their assigned session role.
@@ -236,7 +270,9 @@ class _SessionGrid extends StatelessWidget {
     final leadMoves = _sortedFilteredMoves(moves, leads, Role.lead, activeFilters, activeSortId);
     final followMoves = _sortedFilteredMoves(moves, follows, Role.follow, activeFilters, activeSortId);
 
-    final hasActiveOptions = activeFilterIds.isNotEmpty || activeSortId != defaultSessionSortId;
+    final hasActiveOptions = activeFilterIds.isNotEmpty ||
+        activeSortId != defaultSessionSortId ||
+        queueFilterActive;
 
     return Scaffold(
       appBar: AppBar(
@@ -254,6 +290,9 @@ class _SessionGrid extends StatelessWidget {
               onToggleFilter,
               activeSortId,
               onSortChanged,
+              queuedMoveIds,
+              queueFilterActive,
+              onToggleQueueFilter,
             ),
           ),
           IconButton(
@@ -263,39 +302,43 @@ class _SessionGrid extends StatelessWidget {
           ),
         ],
       ),
-      body: moves.isEmpty
-          ? const Center(child: Text('No moves in catalog yet.'))
-          : CustomScrollView(
-              slivers: [
-                if (leads.isNotEmpty)
-                  if (leadMoves.isEmpty)
-                    const SliverToBoxAdapter(child: _AllFilteredNotice())
-                  else
-                    _GridSection(
-                      moves: leadMoves,
-                      attendees: leads,
-                      role: Role.lead,
-                      sessionRoles: sessionRoles,
-                      sessionExposureDeltas: sessionExposureDeltas,
-                      onExposureAdjusted: onExposureAdjusted,
-                    ),
-                if (follows.isNotEmpty)
-                  if (followMoves.isEmpty)
-                    const SliverToBoxAdapter(child: _AllFilteredNotice())
-                  else
-                    _GridSection(
-                      moves: followMoves,
-                      attendees: follows,
-                      role: Role.follow,
-                      sessionRoles: sessionRoles,
-                      sessionExposureDeltas: sessionExposureDeltas,
-                      onExposureAdjusted: onExposureAdjusted,
-                    ),
-                // Bottom padding so the last row isn't flush against the
-                // floating action button.
-                const SliverToBoxAdapter(child: SizedBox(height: 88)),
-              ],
-            ),
+      body: moves.isEmpty && queueFilterActive
+          ? const _AllFilteredNotice()
+          : moves.isEmpty
+              ? const Center(child: Text('No moves in catalog yet.'))
+              : CustomScrollView(
+                  slivers: [
+                    if (leads.isNotEmpty)
+                      if (leadMoves.isEmpty)
+                        const SliverToBoxAdapter(child: _AllFilteredNotice())
+                      else
+                        _GridSection(
+                          moves: leadMoves,
+                          attendees: leads,
+                          role: Role.lead,
+                          sessionRoles: sessionRoles,
+                          sessionExposureDeltas: sessionExposureDeltas,
+                          onExposureAdjusted: onExposureAdjusted,
+                          queuedMoveIds: queuedMoveIds,
+                          onToggleQueue: onToggleQueue,
+                        ),
+                    if (follows.isNotEmpty)
+                      if (followMoves.isEmpty)
+                        const SliverToBoxAdapter(child: _AllFilteredNotice())
+                      else
+                        _GridSection(
+                          moves: followMoves,
+                          attendees: follows,
+                          role: Role.follow,
+                          sessionRoles: sessionRoles,
+                          sessionExposureDeltas: sessionExposureDeltas,
+                          onExposureAdjusted: onExposureAdjusted,
+                          queuedMoveIds: queuedMoveIds,
+                          onToggleQueue: onToggleQueue,
+                        ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 88)),
+                  ],
+                ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showQuickAddMove(context),
         icon: const Icon(Icons.add),
@@ -349,6 +392,9 @@ void _showSortFilterSheet(
   ValueChanged<String> onToggleFilter,
   String activeSortId,
   ValueChanged<String> onSortChanged,
+  Set<String> queuedMoveIds,
+  bool queueFilterActive,
+  ValueChanged<bool> onToggleQueueFilter,
 ) {
   showModalBottomSheet(
     context: context,
@@ -385,6 +431,22 @@ void _showSortFilterSheet(
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
                   child: Text('Filter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ),
+                // Queue filter — disabled when queue is empty
+                SwitchListTile(
+                  title: const Text('Show queued moves only'),
+                  subtitle: Text(
+                    queuedMoveIds.isEmpty
+                        ? 'Queue is empty — add moves via the move popup'
+                        : '${queuedMoveIds.length} move${queuedMoveIds.length == 1 ? '' : 's'} queued',
+                  ),
+                  value: queueFilterActive && queuedMoveIds.isNotEmpty,
+                  onChanged: queuedMoveIds.isEmpty
+                      ? null
+                      : (val) {
+                          onToggleQueueFilter(val);
+                          setState(() {});
+                        },
                 ),
                 ...allMoveFilters.map((filter) {
                   final isActive = activeFilterIds.contains(filter.id);
@@ -423,6 +485,8 @@ class _GridSection extends StatefulWidget {
     required this.sessionRoles,
     required this.sessionExposureDeltas,
     required this.onExposureAdjusted,
+    required this.queuedMoveIds,
+    required this.onToggleQueue,
   });
 
   final List<Move> moves;
@@ -431,6 +495,8 @@ class _GridSection extends StatefulWidget {
   final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
+  final Set<String> queuedMoveIds;
+  final ValueChanged<String> onToggleQueue;
 
   @override
   State<_GridSection> createState() => _GridSectionState();
@@ -497,6 +563,8 @@ class _GridSectionState extends State<_GridSection> {
                 sessionRoles: widget.sessionRoles,
                 sessionExposureDeltas: widget.sessionExposureDeltas,
                 onExposureAdjusted: widget.onExposureAdjusted,
+                queuedMoveIds: widget.queuedMoveIds,
+                onToggleQueue: widget.onToggleQueue,
               );
             },
             childCount: moves.length,
@@ -525,6 +593,8 @@ class _MoveRow extends StatefulWidget {
     required this.sessionRoles,
     required this.sessionExposureDeltas,
     required this.onExposureAdjusted,
+    required this.queuedMoveIds,
+    required this.onToggleQueue,
   });
 
   final Move move;
@@ -537,6 +607,8 @@ class _MoveRow extends StatefulWidget {
   final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
+  final Set<String> queuedMoveIds;
+  final ValueChanged<String> onToggleQueue;
 
   @override
   State<_MoveRow> createState() => _MoveRowState();
@@ -577,6 +649,8 @@ class _MoveRowState extends State<_MoveRow> {
               sessionRoles: widget.sessionRoles,
               sessionExposureDeltas: widget.sessionExposureDeltas,
               onExposureAdjusted: widget.onExposureAdjusted,
+              queuedMoveIds: widget.queuedMoveIds,
+              onToggleQueue: widget.onToggleQueue,
             ),
             Expanded(
               child: SingleChildScrollView(
@@ -724,6 +798,8 @@ class _MoveNameCell extends StatelessWidget {
     required this.sessionRoles,
     required this.sessionExposureDeltas,
     required this.onExposureAdjusted,
+    required this.queuedMoveIds,
+    required this.onToggleQueue,
   });
 
   final Move move;
@@ -734,6 +810,8 @@ class _MoveNameCell extends StatelessWidget {
   final Map<String, Set<Role>> sessionRoles;
   final Map<String, Map<String, int>> sessionExposureDeltas;
   final void Function(String moveId, List<String> studentIds, int delta) onExposureAdjusted;
+  final Set<String> queuedMoveIds;
+  final ValueChanged<String> onToggleQueue;
 
   void _adjust(BuildContext context, int delta) {
     final ids = attendees.map((s) => s.id).toList();
@@ -743,6 +821,10 @@ class _MoveNameCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isQueued = queuedMoveIds.contains(move.id);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dotColor = isDark ? AppTheme.goldDark : AppTheme.gold;
+
     return SizedBox(
       width: width,
       height: height,
@@ -750,6 +832,14 @@ class _MoveNameCell extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
+            // Queued indicator dot
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isQueued ? 6 : 0,
+              height: 6,
+              margin: EdgeInsets.only(right: isQueued ? 4 : 0),
+              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+            ),
             Expanded(
               child: InkWell(
                 onTap: () => showMovePopup(
@@ -758,6 +848,8 @@ class _MoveNameCell extends StatelessWidget {
                   sessionRoles,
                   sessionExposureDeltas: sessionExposureDeltas,
                   onExposureAdjusted: onExposureAdjusted,
+                  queuedMoveIds: queuedMoveIds,
+                  onToggleQueue: onToggleQueue,
                 ),
                 child: Row(
                   children: [
