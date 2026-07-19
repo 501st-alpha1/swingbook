@@ -34,45 +34,50 @@ void showMovePopup(
           title: Text(move.name),
           content: move.hasDescription ? Text(move.description!) : null,
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-            if (sessionRoles.isNotEmpty && onToggleQueue != null)
-              TextButton.icon(
-                icon: Icon(
-                  isQueued ? Icons.playlist_remove : Icons.playlist_add,
-                  size: 18,
-                  color: isQueued ? gold : null,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
                 ),
-                label: Text(
-                  isQueued ? 'Dequeue' : 'Queue',
-                  style: TextStyle(color: isQueued ? gold : null),
-                ),
-                onPressed: () {
-                  onToggleQueue(move.id);
-                  setState(() {}); // refresh button label in the open dialog
-                },
-              ),
-            if (sessionRoles.isNotEmpty)
-              FilledButton.icon(
-                icon: const Icon(Icons.center_focus_strong, size: 18),
-                label: const Text('Focus'),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SkillFocusPage(
-                        move: move,
-                        sessionRoles: sessionRoles,
-                        sessionExposureDeltas: sessionExposureDeltas,
-                        onExposureAdjusted: onExposureAdjusted,
-                      ),
+                if (sessionRoles.isNotEmpty && onToggleQueue != null)
+                  TextButton.icon(
+                    icon: Icon(
+                      isQueued ? Icons.playlist_remove : Icons.playlist_add,
+                      size: 18,
+                      color: isQueued ? gold : null,
                     ),
-                  );
-                },
-              ),
+                    label: Text(
+                      isQueued ? 'Dequeue' : 'Queue',
+                      style: TextStyle(color: isQueued ? gold : null),
+                    ),
+                    onPressed: () {
+                      onToggleQueue(move.id);
+                      setState(() {});
+                    },
+                  ),
+                if (sessionRoles.isNotEmpty)
+                  FilledButton.icon(
+                    icon: const Icon(Icons.center_focus_strong, size: 18),
+                    label: const Text('Focus'),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SkillFocusPage(
+                            move: move,
+                            sessionRoles: sessionRoles,
+                            sessionExposureDeltas: sessionExposureDeltas,
+                            onExposureAdjusted: onExposureAdjusted,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ],
         );
       },
