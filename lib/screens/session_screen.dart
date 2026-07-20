@@ -399,75 +399,125 @@ void _showSortFilterSheet(
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                  child: Text('Sort', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                ),
-                ...allSessionSorts.map((sort) {
-                  final isActive = sort.id == activeSortId;
-                  return RadioListTile<String>(
+    builder: (_) => _SortFilterSheet(
+      activeFilterIds: activeFilterIds,
+      onToggleFilter: onToggleFilter,
+      initialSortId: activeSortId,
+      onSortChanged: onSortChanged,
+      queuedMoveIds: queuedMoveIds,
+      initialQueueFilterActive: queueFilterActive,
+      onToggleQueueFilter: onToggleQueueFilter,
+    ),
+  );
+}
+
+/// A proper [StatefulWidget] sheet for sort/filter options.
+///
+/// Immutable values ([activeSortId], [queueFilterActive]) are copied into
+/// local state on open so toggling them animates correctly within the sheet,
+/// while each change is also propagated to the parent via callbacks so the
+/// grid updates live. Mutable reference types ([activeFilterIds],
+/// [queuedMoveIds]) are read directly since mutations are visible through
+/// the same reference.
+class _SortFilterSheet extends StatefulWidget {
+  const _SortFilterSheet({
+    required this.activeFilterIds,
+    required this.onToggleFilter,
+    required this.initialSortId,
+    required this.onSortChanged,
+    required this.queuedMoveIds,
+    required this.initialQueueFilterActive,
+    required this.onToggleQueueFilter,
+  });
+
+  final Set<String> activeFilterIds;
+  final ValueChanged<String> onToggleFilter;
+  final String initialSortId;
+  final ValueChanged<String> onSortChanged;
+  final Set<String> queuedMoveIds;
+  final bool initialQueueFilterActive;
+  final ValueChanged<bool> onToggleQueueFilter;
+
+  @override
+  State<_SortFilterSheet> createState() => _SortFilterSheetState();
+}
+
+class _SortFilterSheetState extends State<_SortFilterSheet> {
+  late String _sortId;
+  late bool _queueFilterActive;
+
+  @override
+  void initState() {
+    super.initState();
+    _sortId = widget.initialSortId;
+    _queueFilterActive = widget.initialQueueFilterActive;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text('Sort', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ),
+              ...allSessionSorts.map((sort) => RadioListTile<String>(
                     title: Text(sort.label),
                     value: sort.id,
-                    groupValue: activeSortId,
+                    groupValue: _sortId,
+                    selected: sort.id == _sortId,
                     onChanged: (id) {
                       if (id != null) {
-                        onSortChanged(id);
-                        setState(() {});
+                        setState(() => _sortId = id);
+                        widget.onSortChanged(id);
                       }
                     },
-                    selected: isActive,
-                  );
-                }),
-                const Divider(),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
-                  child: Text('Filter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  )),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: Text('Filter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ),
+              SwitchListTile(
+                title: const Text('Show queued moves only'),
+                subtitle: Text(
+                  widget.queuedMoveIds.isEmpty
+                      ? 'Queue is empty — add moves via the move popup'
+                      : '${widget.queuedMoveIds.length} move${widget.queuedMoveIds.length == 1 ? '' : 's'} queued',
                 ),
-                // Queue filter — disabled when queue is empty
-                SwitchListTile(
-                  title: const Text('Show queued moves only'),
-                  subtitle: Text(
-                    queuedMoveIds.isEmpty
-                        ? 'Queue is empty — add moves via the move popup'
-                        : '${queuedMoveIds.length} move${queuedMoveIds.length == 1 ? '' : 's'} queued',
-                  ),
-                  value: queueFilterActive && queuedMoveIds.isNotEmpty,
-                  onChanged: queuedMoveIds.isEmpty
-                      ? null
-                      : (val) {
-                          onToggleQueueFilter(val);
-                          setState(() {});
-                        },
-                ),
-                ...allMoveFilters.map((filter) {
-                  final isActive = activeFilterIds.contains(filter.id);
-                  return SwitchListTile(
-                    title: Text(filter.label),
-                    subtitle: Text(filter.description),
-                    value: isActive,
-                    onChanged: (_) {
-                      onToggleFilter(filter.id);
-                      setState(() {});
-                    },
-                  );
-                }),
-                const SizedBox(height: 8),
-              ],
-            ),
+                value: _queueFilterActive && widget.queuedMoveIds.isNotEmpty,
+                onChanged: widget.queuedMoveIds.isEmpty
+                    ? null
+                    : (val) {
+                        setState(() => _queueFilterActive = val);
+                        widget.onToggleQueueFilter(val);
+                      },
+              ),
+              ...allMoveFilters.map((filter) {
+                final isActive = widget.activeFilterIds.contains(filter.id);
+                return SwitchListTile(
+                  title: Text(filter.label),
+                  subtitle: Text(filter.description),
+                  value: isActive,
+                  onChanged: (_) {
+                    widget.onToggleFilter(filter.id); // mutate the Set first
+                    setState(() {}); // then re-read the now-updated Set ref
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 
