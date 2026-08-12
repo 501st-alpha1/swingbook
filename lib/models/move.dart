@@ -1,3 +1,5 @@
+import 'student.dart'; // for Role
+
 enum MoveType { push, pass, whip, starterStep, throwOut, pickUp, other }
 
 extension MoveTypeLabel on MoveType {
@@ -25,15 +27,24 @@ class Move {
   /// catalog moves with simple, well-known names.
   final String? description;
 
+  /// Which role(s) this move applies to. Null means both lead and follow.
+  /// Role.lead means lead-only, Role.follow means follow-only.
+  final Role? applicableTo;
+
   const Move({
     required this.id,
     required this.name,
     required this.type,
     required this.difficulty,
     this.description,
+    this.applicableTo,
   });
 
   bool get hasDescription => description != null && description!.trim().isNotEmpty;
+
+  /// Returns true if this move applies to the given role.
+  /// If applicableTo is null, it applies to all roles.
+  bool appliesTo(Role role) => applicableTo == null || applicableTo == role;
 
   factory Move.fromJson(Map<String, dynamic> json) => Move(
         id: json['id'] as String,
@@ -42,6 +53,9 @@ class Move {
         difficulty: Difficulty.values
             .byName(json['difficulty'] as String? ?? 'beginner'),
         description: json['description'] as String?,
+        applicableTo: json['applicableTo'] != null
+            ? Role.values.byName(json['applicableTo'] as String)
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +64,7 @@ class Move {
         'type': type.name,
         'difficulty': difficulty.name,
         if (description != null) 'description': description,
+        if (applicableTo != null) 'applicableTo': applicableTo!.name,
       };
 
   Move copyWith({
@@ -58,7 +73,9 @@ class Move {
     MoveType? type,
     Difficulty? difficulty,
     String? description,
+    Role? applicableTo,
     bool clearDescription = false,
+    bool clearApplicableTo = false,
   }) =>
       Move(
         id: id ?? this.id,
@@ -66,5 +83,6 @@ class Move {
         type: type ?? this.type,
         difficulty: difficulty ?? this.difficulty,
         description: clearDescription ? null : (description ?? this.description),
+        applicableTo: clearApplicableTo ? null : (applicableTo ?? this.applicableTo),
       );
 }

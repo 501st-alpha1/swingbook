@@ -359,9 +359,11 @@ List<Move> _sortedFilteredMoves(
   List<MoveFilter> activeFilters,
   String activeSortId,
 ) {
-  var result = moves;
+  // Filter out moves that don't apply to this role
+  var result = moves.where((move) => move.appliesTo(role)).toList();
+
   if (attendees.isNotEmpty && activeFilters.isNotEmpty) {
-    result = moves.where((move) {
+    result = result.where((move) {
       return !activeFilters.any((f) => f.shouldHide(move, attendees, role));
     }).toList();
   }

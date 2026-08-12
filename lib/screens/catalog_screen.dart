@@ -77,7 +77,7 @@ class _MoveTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
         title: Text(move.name),
-        subtitle: Text('${_typeLabel(move.type)} · ${_difficultyLabel(move.difficulty)}'),
+        subtitle: Text('${_typeLabel(move.type)} · ${_difficultyLabel(move.difficulty)}${_roleLabel(move.applicableTo)}'),
         onTap: move.hasDescription ? () => showMovePopup(context, move, const <String, Set<Role>>{}) : null,
         leading: move.hasDescription
             ? Icon(Icons.notes, size: 20, color: Colors.grey.shade500)
@@ -106,6 +106,12 @@ String _difficultyLabel(Difficulty d) => switch (d) {
       Difficulty.beginner => 'Beginner',
       Difficulty.intermediate => 'Intermediate',
       Difficulty.advanced => 'Advanced',
+    };
+
+String _roleLabel(Role? role) => switch (role) {
+      null => '',
+      Role.lead => ' · Lead only',
+      Role.follow => ' · Follow only',
     };
 
 void _confirmDelete(BuildContext context, Move move) {
@@ -155,6 +161,7 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
   late final TextEditingController _descriptionController;
   late MoveType _type;
   late Difficulty _difficulty;
+  late Role? _applicableTo;
 
   @override
   void initState() {
@@ -163,6 +170,7 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
     _descriptionController = TextEditingController(text: widget.existing?.description ?? '');
     _type = widget.existing?.type ?? MoveType.push;
     _difficulty = widget.existing?.difficulty ?? Difficulty.beginner;
+    _applicableTo = widget.existing?.applicableTo;
   }
 
   @override
@@ -195,6 +203,7 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
         type: _type,
         difficulty: _difficulty,
         description: description.isEmpty ? null : description,
+        applicableTo: _applicableTo,
       ));
     } else {
       appState.updateMove(widget.existing!.copyWith(
@@ -203,6 +212,8 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
         difficulty: _difficulty,
         description: description.isEmpty ? null : description,
         clearDescription: description.isEmpty,
+        applicableTo: _applicableTo,
+        clearApplicableTo: _applicableTo == null,
       ));
     }
     Navigator.pop(context);
@@ -281,6 +292,22 @@ class _MoveEditorSheetState extends State<_MoveEditorSheet> {
                 .toList(),
             onChanged: (v) => setState(() => _difficulty = v ?? _difficulty),
           ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<Role?>(
+            value: _applicableTo,
+            decoration: const InputDecoration(
+              labelText: 'Applies to',
+              hintText: 'Both by default',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: null, child: Text('Both lead and follow')),
+              DropdownMenuItem(value: Role.lead, child: Text('Lead only')),
+              DropdownMenuItem(value: Role.follow, child: Text('Follow only')),
+            ],
+            onChanged: (v) => setState(() => _applicableTo = v),
+          ),
+          const SizedBox(height: 16),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _save,

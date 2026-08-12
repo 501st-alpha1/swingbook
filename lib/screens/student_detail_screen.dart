@@ -195,7 +195,10 @@ class _MovesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final moves = sortedMoves(appState.catalog);
+    final moves = sortedMoves(appState.catalog).where((move) {
+      // Only show moves that apply to at least one visible role
+      return visibleRoles.any((role) => move.appliesTo(role));
+    }).toList();
 
     if (moves.isEmpty) {
       return const Center(child: Text('No moves in catalog yet.'));
