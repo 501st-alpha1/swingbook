@@ -1,16 +1,20 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/move.dart';
+import '../models/song.dart';
 import '../models/student.dart';
 import '../services/storage_service.dart';
 
 class AppState extends ChangeNotifier {
   List<Move> _catalog = [];
   List<Student> _students = [];
+  List<Song> _songs = [];
+
   bool _loading = true;
 
   List<Move> get catalog => List.unmodifiable(_catalog);
   List<Student> get students => List.unmodifiable(_students);
+  List<Song> get songs => List.unmodifiable(_songs);
   bool get loading => _loading;
 
   Future<void> load() async {
@@ -19,8 +23,34 @@ class AppState extends ChangeNotifier {
 
     _catalog = await StorageService.instance.loadCatalog();
     _students = await StorageService.instance.loadAllStudents();
+    _songs = await StorageService.instance.loadSongs();
 
     _loading = false;
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Song mutations
+  // ---------------------------------------------------------------------------
+
+  Future<void> addSong(Song song) async {
+    _songs = [..._songs, song]
+      ..sort((a, b) => a.bpm.compareTo(b.bpm));
+    await StorageService.instance.saveSongs(_songs);
+    notifyListeners();
+  }
+
+  Future<void> updateSong(Song song) async {
+    _songs = [
+      for (final s in _songs) s.id == song.id ? song : s,
+    ]..sort((a, b) => a.bpm.compareTo(b.bpm));
+    await StorageService.instance.saveSongs(_songs);
+    notifyListeners();
+  }
+
+  Future<void> deleteSong(String songId) async {
+    _songs = _songs.where((s) => s.id != songId).toList();
+    await StorageService.instance.saveSongs(_songs);
     notifyListeners();
   }
 

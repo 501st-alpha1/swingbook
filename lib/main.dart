@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/app_state.dart';
 import 'screens/catalog_screen.dart';
 import 'screens/session_screen.dart';
+import 'screens/music_screen.dart';
 import 'screens/students_screen.dart';
 import 'theme.dart';
 
@@ -44,6 +45,7 @@ class _RootShellState extends State<RootShell> {
     SessionScreen(),
     StudentsScreen(),
     CatalogScreen(),
+    MusicScreen(),
   ];
 
   @override
@@ -76,6 +78,11 @@ class _RootShellState extends State<RootShell> {
             icon: Icon(Icons.list_alt_outlined),
             selectedIcon: Icon(Icons.list_alt),
             label: 'Catalog',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.music_note_outlined),
+            selectedIcon: Icon(Icons.music_note),
+            label: 'Music',
           ),
         ],
       ),

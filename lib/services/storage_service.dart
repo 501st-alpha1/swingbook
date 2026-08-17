@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/move.dart';
+import '../models/song.dart';
 import '../models/student.dart';
 
 class StorageService {
@@ -91,5 +93,23 @@ class StorageService {
     await init();
     final file = File('${_studentsDir.path}/$studentId.json');
     if (await file.exists()) await file.delete();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Songs
+  // ---------------------------------------------------------------------------
+  Future<List<Song>> loadSongs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('songs');
+    if (jsonString == null) return [];
+    
+    final jsonList = jsonDecode(jsonString) as List<dynamic>;
+    return jsonList.map((j) => Song.fromJson(j as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> saveSongs(List<Song> songs) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(songs.map((s) => s.toJson()).toList());
+    await prefs.setString('songs', jsonString);
   }
 }
