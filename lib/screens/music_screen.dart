@@ -229,16 +229,62 @@ void _showSongDialog(BuildContext context, {Song? existing}) {
             const SizedBox(height: 16),
             Row(
               children: [
-                Text('BPM: $bpm', style: Theme.of(ctx).textTheme.bodyLarge),
+                // Decrement buttons
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BpmButton(
+                      icon: Icons.remove,
+                      label: '-5',
+                      onPressed: () => setState(() => bpm = (bpm - 5).clamp(60, 300)),
+                    ),
+                    const SizedBox(height: 4),
+                    _BpmButton(
+                      icon: Icons.remove,
+                      label: '-1',
+                      small: true,
+                      onPressed: () => setState(() => bpm = (bpm - 1).clamp(60, 300)),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                // BPM text field
                 Expanded(
-                  child: Slider(
-                    value: bpm.toDouble(),
-                    min: 60,
-                    max: 300,
-                    divisions: 240,
-                    label: bpm.toString(),
-                    onChanged: (v) => setState(() => bpm = v.round()),
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'BPM',
+                      border: OutlineInputBorder(),
+                      suffixText: 'BPM',
+                    ),
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    controller: TextEditingController(text: bpm.toString()),
+                    onChanged: (value) {
+                      final newBpm = int.tryParse(value);
+                      if (newBpm != null) {
+                        bpm = newBpm.clamp(60, 300);
+                      }
+                    },
                   ),
+                ),
+                const SizedBox(width: 12),
+                // Increment buttons
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BpmButton(
+                      icon: Icons.add,
+                      label: '+5',
+                      onPressed: () => setState(() => bpm = (bpm + 5).clamp(60, 300)),
+                    ),
+                    const SizedBox(height: 4),
+                    _BpmButton(
+                      icon: Icons.add,
+                      label: '+1',
+                      small: true,
+                      onPressed: () => setState(() => bpm = (bpm + 1).clamp(60, 300)),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -306,4 +352,44 @@ void _confirmDelete(BuildContext context, Song song) {
       ],
     ),
   );
+}
+
+class _BpmButton extends StatelessWidget {
+  const _BpmButton({
+      required this.icon,
+      required this.label,
+      required this.onPressed,
+      this.small = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: small ? 40 : 48,
+      height: small ? 32 : 40,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: small
+          ? Icon(icon, size: 16)
+          : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14),
+              const SizedBox(width: 2),
+              Text(label, style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+      ),
+    );
+  }
 }
