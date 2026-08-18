@@ -234,13 +234,11 @@ void _showSongDialog(BuildContext context, {Song? existing}) {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _BpmButton(
-                      icon: Icons.remove,
                       label: '-5',
                       onPressed: () => setState(() => bpm = (bpm - 5).clamp(60, 300)),
                     ),
                     const SizedBox(height: 4),
                     _BpmButton(
-                      icon: Icons.remove,
                       label: '-1',
                       small: true,
                       onPressed: () => setState(() => bpm = (bpm - 1).clamp(60, 300)),
@@ -273,13 +271,11 @@ void _showSongDialog(BuildContext context, {Song? existing}) {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _BpmButton(
-                      icon: Icons.add,
                       label: '+5',
                       onPressed: () => setState(() => bpm = (bpm + 5).clamp(60, 300)),
                     ),
                     const SizedBox(height: 4),
                     _BpmButton(
-                      icon: Icons.add,
                       label: '+1',
                       small: true,
                       onPressed: () => setState(() => bpm = (bpm + 1).clamp(60, 300)),
@@ -356,13 +352,11 @@ void _confirmDelete(BuildContext context, Song song) {
 
 class _BpmButton extends StatelessWidget {
   const _BpmButton({
-      required this.icon,
       required this.label,
       required this.onPressed,
       this.small = false,
   });
 
-  final IconData icon;
   final String label;
   final VoidCallback onPressed;
   final bool small;
@@ -379,16 +373,13 @@ class _BpmButton extends StatelessWidget {
           minimumSize: Size.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        child: small
-          ? Icon(icon, size: 16)
-          : Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 14),
-              const SizedBox(width: 2),
-              Text(label, style: const TextStyle(fontSize: 12)),
-            ],
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: small ? 12 : 14,
+            fontWeight: FontWeight.bold,
           ),
+        ),
       ),
     );
   }
